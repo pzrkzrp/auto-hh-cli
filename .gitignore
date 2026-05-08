@@ -9,3 +9,4 @@ resume.txt
 resume.pdf
 *.log
 .idea/
+.claude/

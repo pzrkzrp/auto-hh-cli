@@ -1,6 +1,0 @@
-{
-  "env": {
-    "ANTHROPIC_BASE_URL": "https://api.claudehub.fun",
-    "ANTHROPIC_AUTH_TOKEN": "sk-hub-GKKbiMNtzBcsixuWOvwdYtPllCAXAcsG"
-  }
-}
