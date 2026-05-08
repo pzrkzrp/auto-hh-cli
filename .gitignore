@@ -1,0 +1,11 @@
+node_modules/
+.env
+data/history.json
+data/tokens.json
+data/browser-profile/
+data/digest-*.md
+resume.md
+resume.txt
+resume.pdf
+*.log
+.idea/

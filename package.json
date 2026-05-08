@@ -1,0 +1,18 @@
+{
+  "name": "auto-hh",
+  "version": "1.0.0",
+  "description": "Search & filter vacancies on hh.ru, apply via Playwright",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "apply": "node src/apply-playwright.js",
+    "login": "node src/apply-playwright.js --login"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.40.0",
+    "axios": "^1.7.7",
+    "dotenv": "^16.4.5",
+    "playwright": "^1.48.0"
+  },
+  "private": true
+}

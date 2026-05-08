@@ -1,0 +1,27 @@
+{
+  "search": {
+    "text": "Node.js разработчик",
+    "area": 1,
+    "experience": "between1And3",
+    "salary": 150000,
+    "only_with_salary": false,
+    "currency": "RUR",
+    "per_page": 50,
+    "max_pages": 4,
+    "schedule": null,
+    "employment": null
+  },
+  "filter": {
+    "requiredSkills": ["JavaScript", "Node.js"],
+    "excludedKeywords": ["1С", "PHP-only", "стажёр"],
+    "excludedCompanies": ["Рога и копыта"],
+    "minSalaryRub": 150000,
+    "excludeArchived": true
+  },
+  "apply": {
+    "maxPerRun": 30,
+    "dryRun": false,
+    "minClaudeScore": 7,
+    "coverLetterTemplate": "Привет!\n\nУвидел вакансию «{title}» — выглядит как то, чем мне интересно заниматься. По стеку пересекаемся: на {matchedSkills} писал последние пару лет в продакшене, так что включусь быстро.\n\nЕсли есть смысл созвониться и обсудить задачи подробнее — я на связи.\n\nИван\nTelegram: @your_telegram"
+  }
+}
