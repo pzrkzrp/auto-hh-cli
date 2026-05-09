@@ -70,6 +70,7 @@ async function main() {
   const resume = loadResume();
   const minScore = cfg.apply.minClaudeScore ?? 7;
 
+  try {
   if (resume) {
     log.info(`Resume loaded: ${resume.filename} (${resume.type})`);
   } else {
@@ -161,9 +162,14 @@ async function main() {
   for (const e of matched.slice(0, 10)) {
     console.log(`- [${e.score ?? '?'}/10] ${e.title} @ ${e.employer} | ${e.salary}\n  ${e.url}`);
   }
+  } finally {
+    await client.close?.();
+  }
 }
 
-main().catch(err => {
-  log.error('Fatal', { msg: err.message, stack: err.stack });
-  process.exit(1);
-});
+main()
+  .then(() => process.exit(0))
+  .catch(err => {
+    log.error('Fatal', { msg: err.message, stack: err.stack });
+    process.exit(1);
+  });
