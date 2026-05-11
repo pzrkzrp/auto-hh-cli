@@ -10,7 +10,7 @@ const history = require('./src/history');
 const { vacancyMatchesFilter } = require('./src/filter');
 const { buildCoverLetter } = require('./src/cover-letter');
 const { loadResume } = require('./src/resume');
-const { judgeVacancy } = require('./src/judge');
+const { judgeVacancy, judgeVacanciesBatch } = require('./src/judge');
 const log = require('./src/logger');
 
 async function collectVacancies(client, search) {
@@ -80,10 +80,9 @@ async function main() {
   log.info('Searching vacancies', cfg.search);
   const items = await collectVacancies(client, cfg.search);
 
-  const matched = [];
-  let judgedCount = 0;
+  // Этап 1: локальный фильтр — собираем кандидатов для Claude.
+  const candidates = [];
   for (const item of items) {
-    if (matched.length >= (cfg.apply.maxPerRun || 50)) break;
     if (history.isSeen(item.id)) continue;
 
     let full;
@@ -102,24 +101,57 @@ async function main() {
       log.info(`Skip ${item.id} (${full.name}): ${verdict.reason}`);
       continue;
     }
+    candidates.push({ full, verdict });
+  }
+
+  log.info(`Local filter passed: ${candidates.length}/${items.length}`);
+
+  // Этап 2: Claude судит пачками.
+  const useClaude = resume && process.env.ANTHROPIC_API_KEY;
+  const batchSize = parseInt(process.env.JUDGE_BATCH_SIZE || '10', 10);
+  const judgements = new Map();
+  let judgedCount = 0;
+
+  if (useClaude && candidates.length) {
+    for (let i = 0; i < candidates.length; i += batchSize) {
+      const batch = candidates.slice(i, i + batchSize).map(c => c.full);
+      log.info(`Judging batch ${i / batchSize + 1}: ${batch.length} vacancies`);
+      const result = await judgeVacanciesBatch(resume, batch, { minScore });
+      if (!result) {
+        log.warn(`Batch failed, falling back to per-item judge`);
+        for (const v of batch) {
+          const j = await judgeVacancy(resume, v, { minScore });
+          if (j) judgements.set(String(v.id), j);
+          judgedCount++;
+        }
+      } else {
+        for (const [id, j] of result.entries()) judgements.set(id, j);
+        judgedCount += batch.length;
+      }
+    }
+  }
+
+  // Этап 3: финальный отбор.
+  const matched = [];
+  for (const { full, verdict } of candidates) {
+    if (matched.length >= (cfg.apply.maxPerRun || 50)) break;
 
     let score = null, reason = '', coverLetter = null;
 
-    if (resume && process.env.ANTHROPIC_API_KEY) {
-      const judgement = await judgeVacancy(resume, full, { minScore });
-      judgedCount++;
+    if (useClaude) {
+      const judgement = judgements.get(String(full.id));
       if (!judgement) {
-        log.warn(`No judgement for ${item.id}, falling back to template`);
+        log.warn(`No judgement for ${full.id}, falling back to template`);
       } else {
         score = judgement.score;
         reason = judgement.reason;
         if (!judgement.fit) {
-          log.info(`Claude rejected ${item.id} (score=${score}): ${reason}` +
+          log.info(`Claude rejected ${full.id} (score=${score}): ${reason}` +
             (judgement.redFlags?.length ? ` flags=${judgement.redFlags.join('; ')}` : ''));
           continue;
         }
         coverLetter = judgement.coverLetter;
-        log.info(`Claude approved ${item.id} (score=${score}): ${reason}`);
+        log.info(`Claude approved ${full.id} (score=${score}): ${reason}`);
       }
     }
 
@@ -128,7 +160,7 @@ async function main() {
     }
 
     matched.push({
-      id: item.id,
+      id: full.id,
       title: full.name,
       employer: full.employer?.name || '—',
       area: full.area?.name || '—',
@@ -139,7 +171,7 @@ async function main() {
       reason,
       coverLetter,
     });
-    history.markApplied(item.id, {
+    history.markApplied(full.id, {
       title: full.name,
       employer: full.employer?.name,
       url: full.alternate_url,

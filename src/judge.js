@@ -57,22 +57,38 @@ const JUDGE_SCHEMA = {
   required: ['fit', 'score', 'reason', 'redFlags', 'coverLetter'],
 };
 
-async function judgeVacancy(resume, vacancy, opts = {}) {
-  const c = getClient();
-  if (!c) return null;
+const BATCH_JUDGE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    verdicts: {
+      type: 'array',
+      description: 'По одной записи на каждую вакансию в том же порядке, что во входе.',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          vacancyId: { type: 'string', description: 'id вакансии из входа' },
+          fit: { type: 'boolean' },
+          score: { type: 'integer' },
+          reason: { type: 'string' },
+          redFlags: { type: 'array', items: { type: 'string' } },
+          coverLetter: { type: 'string' },
+        },
+        required: ['vacancyId', 'fit', 'score', 'reason', 'redFlags', 'coverLetter'],
+      },
+    },
+  },
+  required: ['verdicts'],
+};
 
-  const model = process.env.CLAUDE_MODEL || 'claude-opus-4-7';
-  const minScore = opts.minScore ?? 7;
-
+function formatVacancyText(vacancy) {
   const description = stripHtml(vacancy.description).slice(0, 6000);
   const skills = (vacancy.key_skills || []).map(s => s.name).join(', ');
   const salary = vacancy.salary
     ? `${vacancy.salary.from || '?'}–${vacancy.salary.to || '?'} ${vacancy.salary.currency || ''}`
     : 'не указана';
-
-  const vacancyBlock = {
-    type: 'text',
-    text: `=== ВАКАНСИЯ ===
+  return `id: ${vacancy.id}
 Название: ${vacancy.name}
 Компания: ${vacancy.employer?.name || '—'}
 Регион: ${vacancy.area?.name || '—'}
@@ -83,12 +99,11 @@ async function judgeVacancy(resume, vacancy, opts = {}) {
 Ключевые навыки: ${skills || '—'}
 
 Описание:
-${description}`,
-  };
+${description}`;
+}
 
-  const resumeBlock = buildResumeBlock(resume);
-
-  const systemText = `Ты карьерный консультант. Сравни резюме соискателя с вакансией и реши, стоит ли откликаться.
+function buildSystemText(minScore) {
+  return `Ты карьерный консультант. Сравни резюме соискателя с вакансией и реши, стоит ли откликаться.
 
 Критерии "fit=true":
 - Стек на 60%+ совпадает с требованиями
@@ -101,6 +116,22 @@ score: 1-3 — не подходит, 4-6 — спорно, 7-8 — хороши
 
 Если fit=true — напиши сопроводительное (4-6 предложений) от первого лица: упомяни 1-2 конкретных пункта из вакансии, релевантный опыт из резюме, без воды и markdown. Начни с "Здравствуйте!", закончи "С уважением.".
 Если fit=false — coverLetter="".`;
+}
+
+async function judgeVacancy(resume, vacancy, opts = {}) {
+  const c = getClient();
+  if (!c) return null;
+
+  const model = process.env.CLAUDE_MODEL || 'claude-opus-4-7';
+  const minScore = opts.minScore ?? 7;
+
+  const vacancyBlock = {
+    type: 'text',
+    text: `=== ВАКАНСИЯ ===\n${formatVacancyText(vacancy)}`,
+  };
+
+  const resumeBlock = buildResumeBlock(resume);
+  const systemText = buildSystemText(minScore);
 
   const messages = [
     {
@@ -113,7 +144,7 @@ score: 1-3 — не подходит, 4-6 — спорно, 7-8 — хороши
   ];
 
   try {
-    const resp = await c.messages.create({
+    ages.create({
       model,
       max_tokens: 1500,
       system: [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }],
@@ -135,4 +166,60 @@ score: 1-3 — не подходит, 4-6 — спорно, 7-8 — хороши
   }
 }
 
-module.exports = { judgeVacancy };
+// Батчевая версия: судит пачку вакансий за один запрос к Claude.
+// Возвращает Map<vacancyId, verdict> (verdict в том же формате, что judgeVacancy).
+async function judgeVacanciesBatch(resume, vacancies, opts = {}) {
+  const c = getClient();
+  if (!c) return null;
+  if (!vacancies.length) return new Map();
+
+  const model = process.env.CLAUDE_MODEL || 'claude-opus-4-7';
+  const minScore = opts.minScore ?? 7;
+
+  const resumeBlock = buildResumeBlock(resume);
+  const systemText = buildSystemText(minScore) +
+    `\n\nВ этом запросе подаётся СРАЗУ НЕСКОЛЬКО вакансий. Для каждой верни отдельную запись в массиве verdicts с полем vacancyId, в том же порядке, что во входе.`;
+
+  const vacanciesText = vacancies.map((v, i) =>
+    `=== ВАКАНСИЯ #${i + 1} ===\n${formatVacancyText(v)}`
+  ).join('\n\n');
+
+  const messages = [
+    {
+      role: 'user',
+      content: [
+        ...(resumeBlock ? [resumeBlock] : []),
+        { type: 'text', text: vacanciesText },
+      ],
+    },
+  ];
+
+  try {
+    const resp = await c.messages.create({
+      model,
+      max_tokens: Math.min(8000, 600 * vacancies.length + 500),
+      system: [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }],
+      messages,
+      output_config: {
+        format: { type: 'json_schema', schema: BATCH_JUDGE_SCHEMA },
+      },
+    });
+
+    const block = resp.content.find(b => b.type === 'text');
+    if (!block) return null;
+    const parsed = JSON.parse(block.text);
+
+    log.debug(`judge batch ${vacancies.length}: cache_read=${resp.usage.cache_read_input_tokens || 0} in=${resp.usage.input_tokens || 0} out=${resp.usage.output_tokens || 0}`);
+
+    const map = new Map();
+    for (const verdict of parsed.verdicts || []) {
+      map.set(String(verdict.vacancyId), verdict);
+    }
+    return map;
+  } catch (err) {
+    log.warn(`judge batch failed (${vacancies.length} items): ${err.message}`);
+    return null;
+  }
+}
+
+module.exports = { judgeVacancy, judgeVacanciesBatch };
