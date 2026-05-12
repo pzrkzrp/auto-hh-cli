@@ -8,7 +8,7 @@ const HHClient = require('./src/hh-client');
 const { loadConfig } = require('./src/config');
 const history = require('./src/history');
 const { vacancyMatchesFilter } = require('./src/filter');
-const { buildCoverLetter } = require('./src/cover-letter');
+const { buildCoverLetter, buildCoverLettersBatch } = require('./src/cover-letter');
 const { loadResume } = require('./src/resume');
 const { judgeVacancy, judgeVacanciesBatch } = require('./src/judge');
 const log = require('./src/logger');
@@ -64,7 +64,47 @@ function writeDigest(entries) {
   return file;
 }
 
+function writeRejected(entries) {
+  if (!entries.length) return null;
+  const dir = path.join(__dirname, 'data');
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `rejected-${new Date().toISOString().slice(0, 10)}.md`);
+  const md = entries.map(e => (
+    `## ${e.title} — ${e.employer}\n` +
+    `- Регион: ${e.area}\n` +
+    `- Зарплата: ${e.salary}\n` +
+    `- Скор Claude: ${e.score ?? '—'}/10\n` +
+    `- Red flags: ${e.redFlags?.join('; ') || '—'}\n` +
+    `- Вердикт: ${e.reason || '—'}\n` +
+    `- Ссылка: ${e.url}\n\n---\n`
+  )).join('\n');
+  fs.writeFileSync(file, md);
+  return file;
+}
+
+function resetData() {
+  const dir = path.join(__dirname, 'data');
+  if (!fs.existsSync(dir)) return;
+  const historyFile = path.join(dir, 'history.json');
+  if (fs.existsSync(historyFile)) {
+    fs.unlinkSync(historyFile);
+    log.info(`Removed ${historyFile}`);
+  }
+  for (const name of fs.readdirSync(dir)) {
+    if (/^(digest|rejected)-.*\.md$/.test(name)) {
+      const p = path.join(dir, name);
+      fs.unlinkSync(p);
+      log.info(`Removed ${p}`);
+    }
+  }
+}
+
 async function main() {
+  const argv = process.argv.slice(2);
+  if (argv.includes('--reset') || argv.includes('--fresh')) {
+    log.info('Reset flag detected — clearing history.json and digests');
+    resetData();
+  }
   const cfg = loadConfig();
   const client = new HHClient();
   const resume = loadResume();
@@ -90,6 +130,11 @@ async function main() {
       full = await client.getVacancy(item.id);
     } catch (err) {
       log.warn(`Failed to fetch vacancy ${item.id}: ${err.message}`);
+      history.markSeen(item.id);
+      continue;
+    }
+    if (!full) {
+      log.warn(`Empty vacancy ${item.id}, skipping`);
       history.markSeen(item.id);
       continue;
     }
@@ -131,12 +176,13 @@ async function main() {
     }
   }
 
-  // Этап 3: финальный отбор.
-  const matched = [];
+  // Этап 3: финальный отбор — без писем (письма пишутся пачкой ниже).
+  const accepted = [];
+  const rejected = [];
   for (const { full, verdict } of candidates) {
-    if (matched.length >= (cfg.apply.maxPerRun || 50)) break;
+    if (accepted.length >= (cfg.apply.maxPerRun || 50)) break;
 
-    let score = null, reason = '', coverLetter = null;
+    let score = null, reason = '';
 
     if (useClaude) {
       const judgement = judgements.get(String(full.id));
@@ -148,13 +194,42 @@ async function main() {
         if (!judgement.fit) {
           log.info(`Claude rejected ${full.id} (score=${score}): ${reason}` +
             (judgement.redFlags?.length ? ` flags=${judgement.redFlags.join('; ')}` : ''));
+          rejected.push({
+            id: full.id,
+            title: full.name,
+            employer: full.employer?.name || '—',
+            area: full.area?.name || '—',
+            salary: fmtSalary(full.salary),
+            url: full.alternate_url,
+            score,
+            reason,
+            redFlags: judgement.redFlags || [],
+          });
           continue;
         }
-        coverLetter = judgement.coverLetter;
         log.info(`Claude approved ${full.id} (score=${score}): ${reason}`);
       }
     }
 
+    accepted.push({ full, verdict, score, reason });
+  }
+
+  // Этап 4: сопроводительные пачками по 20.
+  const coverBatchSize = parseInt(process.env.COVER_BATCH_SIZE || '20', 10);
+  let coverMap = new Map();
+  if (useClaude && accepted.length) {
+    log.info(`Generating cover letters in batches of ${coverBatchSize} for ${accepted.length} vacancies`);
+    coverMap = await buildCoverLettersBatch(
+      resume,
+      accepted.map(a => ({ vacancy: a.full, matchedSkills: a.verdict.matchedSkills })),
+      coverBatchSize,
+    );
+  }
+
+  const matched = [];
+  for (const a of accepted) {
+    const { full, verdict, score, reason } = a;
+    let coverLetter = coverMap.get(String(full.id));
     if (!coverLetter) {
       coverLetter = await buildCoverLetter(cfg.apply.coverLetterTemplate, full, verdict.matchedSkills);
     }
@@ -181,7 +256,10 @@ async function main() {
     log.info(`Match: ${full.name} @ ${full.employer?.name} -> ${full.alternate_url}`);
   }
 
-  log.info(`Judged by Claude: ${judgedCount}, accepted: ${matched.length}`);
+  log.info(`Judged by Claude: ${judgedCount}, accepted: ${matched.length}, rejected: ${rejected.length}`);
+
+  const rejectedFile = writeRejected(rejected);
+  if (rejectedFile) log.info(`Rejected saved: ${rejectedFile} (${rejected.length} vacancies)`);
 
   if (matched.length === 0) {
     log.info('No matching vacancies.');

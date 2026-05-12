@@ -114,8 +114,7 @@ function buildSystemText(minScore) {
 score: 1-3 — не подходит, 4-6 — спорно, 7-8 — хороший матч, 9-10 — идеальный.
 Порог отклика: score >= ${minScore}. Если ниже — fit=false.
 
-Если fit=true — напиши сопроводительное (4-6 предложений) от первого лица: упомяни 1-2 конкретных пункта из вакансии, релевантный опыт из резюме, без воды и markdown. Начни с "Здравствуйте!", закончи "С уважением.".
-Если fit=false — coverLetter="".`;
+coverLetter всегда оставляй пустой строкой "" — сопроводительные пишутся отдельным шагом.`;
 }
 
 async function judgeVacancy(resume, vacancy, opts = {}) {
@@ -197,7 +196,7 @@ async function judgeVacanciesBatch(resume, vacancies, opts = {}) {
   try {
     const resp = await c.messages.create({
       model,
-      max_tokens: Math.min(8000, 600 * vacancies.length + 500),
+      max_tokens: Math.min(8000, 200 * vacancies.length + 500),
       system: [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }],
       messages,
       output_config: {

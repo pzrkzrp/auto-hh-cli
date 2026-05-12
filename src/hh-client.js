@@ -67,6 +67,9 @@ function mapVacancyView(v) {
     experience: v.workExperience ? { name: v.workExperience.name || v.workExperience } : null,
     schedule: v.workScheduleByDays ? { name: (v.workScheduleByDays.name || (Array.isArray(v.workScheduleByDays) ? v.workScheduleByDays.join(', ') : '')) } : null,
     employment: v.employmentForm ? { name: v.employmentForm.name || v.employmentForm } : null,
+    work_format: Array.isArray(v.workFormat)
+      ? v.workFormat.map(w => (typeof w === 'string' ? w : (w.id || w.name || ''))).filter(Boolean)
+      : (v.workFormat ? [v.workFormat.id || v.workFormat.name].filter(Boolean) : []),
     archived: !v.status?.active,
     alternate_url: `https://hh.ru/vacancy/${v.vacancyId}`,
   };
@@ -79,18 +82,21 @@ class HHClient {
     this.delay = e.requestDelayMs;
     this.ctx = null;
     this.page = null;
+    this.headless = true;
   }
 
-  async init() {
-    if (this.ctx) return;
+  async init(headless = true) {
+    if (this.ctx && this.headless === headless) return;
+    if (this.ctx) await this.close();
     if (!fs.existsSync(PROFILE)) {
       throw new Error(`Browser profile not found: ${PROFILE}. Run \`npm run login\` first.`);
     }
-    log.info('Launching Playwright context for hh.ru scraping');
+    log.info(`Launching Playwright context for hh.ru scraping (headless=${headless})`);
     this.ctx = await chromium.launchPersistentContext(PROFILE, {
-      headless: true,
+      headless,
       viewport: { width: 1280, height: 800 },
     });
+    this.headless = headless;
     this.page = this.ctx.pages()[0] || await this.ctx.newPage();
   }
 
@@ -102,20 +108,51 @@ class HHClient {
     }
   }
 
+  async isCaptchaPage() {
+    const url = this.page.url();
+    if (/captcha/i.test(url)) return true;
+    return await this.page.evaluate(() => {
+      return !!document.querySelector('[data-qa="account-captcha-picture"], img[src*="captcha"], form[action*="captcha"]');
+    }).catch(() => false);
+  }
+
+  async solveCaptchaInteractive(url) {
+    log.warn('Captcha detected — reopening browser in headful mode. Solve it in the window, then press Enter here.');
+    await this.init(false);
+    await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
+    await new Promise(resolve => {
+      process.stdout.write('Press Enter after solving captcha... ');
+      process.stdin.once('data', () => resolve());
+    });
+    log.info('Resuming in headless mode');
+    await this.init(true);
+  }
+
   // Открывает url, парсит JSON из template#HH-Lux-InitialState.
-  async fetchInitialState(url) {
-    await this.init();
+  async fetchInitialState(url, { _retry = false } = {}) {
+    await this.init(this.headless);
     await sleep(this.delay);
     const resp = await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
     if (!resp || !resp.ok()) {
       const status = resp?.status() || 0;
       throw new Error(`HTTP ${status} ${url}`);
     }
+    if (await this.isCaptchaPage()) {
+      if (_retry) throw new Error(`Captcha still present after solving on ${url}`);
+      await this.solveCaptchaInteractive(url);
+      return this.fetchInitialState(url, { _retry: true });
+    }
     const json = await this.page.evaluate(() => {
       const tpl = document.querySelector('template#HH-Lux-InitialState');
       return tpl ? tpl.innerHTML : null;
     });
-    if (!json) throw new Error(`No initial state on ${url}`);
+    if (!json) {
+      if (!_retry && await this.isCaptchaPage()) {
+        await this.solveCaptchaInteractive(url);
+        return this.fetchInitialState(url, { _retry: true });
+      }
+      throw new Error(`No initial state on ${url}`);
+    }
     return JSON.parse(json);
   }
 

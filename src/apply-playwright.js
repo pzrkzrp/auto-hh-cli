@@ -14,8 +14,8 @@ const history = require('./history');
 
 const PROFILE = path.resolve(process.env.PW_USER_DATA_DIR || './data/browser-profile');
 const HEADLESS = String(process.env.PW_HEADLESS || 'false') === 'true';
-const MIN_DELAY = parseInt(process.env.PW_MIN_DELAY_MS || '8000', 10);
-const MAX_DELAY = parseInt(process.env.PW_MAX_DELAY_MS || '20000', 10);
+const MIN_DELAY = parseInt(process.env.PW_MIN_DELAY_MS || '500', 10);
+const MAX_DELAY = parseInt(process.env.PW_MAX_DELAY_MS || '2000', 10);
 const TEST_MODE = (process.env.PW_TEST_MODE || 'manual').toLowerCase();
 const TEST_TIMEOUT = parseInt(process.env.PW_TEST_TIMEOUT_MS || '0', 10);
 
