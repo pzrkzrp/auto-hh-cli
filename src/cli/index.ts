@@ -1,11 +1,11 @@
 // CLI entry point: регистрирует команды и запускает Commander.
-const { Command } = require('commander');
-const cmdSearch = require('./cmd-search');
-const cmdApply = require('./cmd-apply');
-const cmdDigest = require('./cmd-digest');
-const cmdHistory = require('./cmd-history');
-const cmdConfig = require('./cmd-config');
-const cmdReset = require('./cmd-reset');
+import {  Command  } from "commander";
+import cmdSearch from "./cmd-search.js";
+import cmdApply from "./cmd-apply.js";
+import cmdDigest from "./cmd-digest.js";
+import cmdHistory from "./cmd-history.js";
+import cmdConfig from "./cmd-config.js";
+import cmdReset from "./cmd-reset.js";
 
 const program = new Command();
 
@@ -52,4 +52,4 @@ program
   .description('Сбросить историю, кэш и дайджесты')
   .action(cmdReset);
 
-module.exports = program;
+export default program;

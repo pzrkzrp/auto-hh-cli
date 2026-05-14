@@ -1,17 +1,17 @@
 #!/usr/bin/env node
 // Собирает digest из сегодняшнего кэша: фильтр → judge → cover letters → digest.
 // Не ходит в hh.ru, использует только кэшированные данные.
-require('dotenv').config();
-const fs = require('fs');
-const path = require('path');
+import 'dotenv/config';
+import fs from "fs";
+import path from "path";
 
-const collectCache = require('../src/collect-cache');
-const { loadResume } = require('../src/resume');
-const { loadConfig } = require('../src/config');
-const { vacancyMatchesFilter } = require('../src/filter');
-const { judgeVacancy, judgeVacanciesBatch } = require('../src/judge');
-const { buildCoverLettersBatch, buildCoverLetter } = require('../src/cover-letter');
-const log = require('../src/logger');
+import collectCache from "../src/cache.js";
+import {  loadResume  } from "../src/resume.js";
+import {  loadConfig  } from "../src/config.js";
+import {  vacancyMatchesFilter  } from "../src/filter.js";
+import {  judgeVacancy, judgeVacanciesBatch  } from "../src/judge.js";
+import {  buildCoverLettersBatch, buildCoverLetter  } from "../src/cover-letter.js";
+import log from "../src/logger.js";
 
 function fmtSalary(s) {
   if (!s) return '—';

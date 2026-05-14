@@ -1,15 +1,16 @@
 // Команда search: поиск, фильтр, Claude → дайджест.
-const path = require('path');
-const HHClient = require('../hh-client');
-const { loadConfig } = require('../config');
-const history = require('../history');
-const collectCache = require('../cache');
-const { vacancyMatchesFilter } = require('../filter');
-const { buildCoverLetter, buildCoverLettersBatch } = require('../cover-letter');
-const { loadResume } = require('../resume');
-const { judgeVacancy, judgeVacanciesBatch } = require('../judge');
-const { writeDigest, writeRejected } = require('../digest');
-const log = require('../logger');
+import path from "path";
+import HHClient from "../hh-client.js";
+import {  loadConfig  } from "../config.js";
+import history from "../history.js";
+import collectCache from "../cache.js";
+import {  vacancyMatchesFilter  } from "../filter.js";
+import {  buildCoverLetter, buildCoverLettersBatch  } from "../cover-letter.js";
+import {  loadResume  } from "../resume.js";
+import {  judgeVacancy, judgeVacanciesBatch  } from "../judge.js";
+import {  writeDigest, writeRejected  } from "../digest.js";
+import resetData from "../reset.js";
+import log from "../logger.js";
 
 async function collectVacancies(client, search, cache) {
   const results = [];
@@ -186,7 +187,7 @@ function selectAccepted(candidates, judgements, useClaude, maxRun) {
 
 async function generateCoverLetters(resume, accepted, cache, dryRun) {
   const coverBatchSize = parseInt(process.env.COVER_BATCH_SIZE || '20', 10);
-  let coverMap = new Map();
+  const coverMap = new Map();
   for (const [id, letter] of Object.entries(cache.coverLetters)) coverMap.set(id, letter);
 
   if (!dryRun && accepted.length) {
@@ -255,7 +256,6 @@ async function buildResults(accepted, coverMap, cache, cfg) {
 async function search(opts = {}) {
   if (opts.config) process.env.CONFIG_PATH = opts.config;
   if (opts.reset) {
-    const resetData = require('../reset');
     resetData();
   }
 
@@ -313,4 +313,4 @@ async function search(opts = {}) {
   }
 }
 
-module.exports = search;
+export default search;

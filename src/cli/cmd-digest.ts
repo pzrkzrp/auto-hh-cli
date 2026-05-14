@@ -1,7 +1,7 @@
 // Команда digest: показать последний дайджест.
-const fs = require('fs');
-const path = require('path');
-const log = require('../logger');
+import fs from "fs";
+import path from "path";
+import log from "../logger.js";
 
 async function digest(opts = {}) {
   const dir = path.join(__dirname, '..', '..', 'data');
@@ -37,4 +37,4 @@ async function digest(opts = {}) {
   }
 }
 
-module.exports = digest;
+export default digest;

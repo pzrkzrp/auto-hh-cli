@@ -1,8 +1,8 @@
 // Кэш собранных вакансий за текущую дату.
 // Позволяет возобновить сбор после обрыва, не выгребая заново
 // все страницы hh и не перезапрашивая getVacancy по каждой карточке.
-const fs = require('fs');
-const path = require('path');
+import fs from "fs";
+import path from "path";
 
 const DIR = path.join(__dirname, '..', 'data');
 
@@ -48,4 +48,6 @@ function clear() {
   return removed;
 }
 
-module.exports = { load, save, clear, fileFor };
+const _default = { load, save, clear, fileFor };
+export default _default;
+export { load, save, clear, fileFor };

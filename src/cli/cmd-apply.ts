@@ -1,9 +1,9 @@
 // Команда apply: отклик через Playwright.
-const fs = require('fs');
-const path = require('path');
-const { chromium } = require('playwright');
-const log = require('../logger');
-const history = require('../history');
+import fs from "fs";
+import path from "path";
+import {  chromium  } from "playwright";
+import log from "../logger.js";
+import history from "../history.js";
 
 const PROFILE = path.resolve(process.env.PW_USER_DATA_DIR || './data/browser-profile');
 const HEADLESS = String(process.env.PW_HEADLESS || 'false') === 'true';
@@ -254,4 +254,4 @@ async function apply(opts = {}) {
   await ctx.close();
 }
 
-module.exports = apply;
+export default apply;

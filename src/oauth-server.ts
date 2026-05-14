@@ -1,12 +1,12 @@
 // Минимальный одноразовый HTTP-сервер для OAuth 2.0 callback hh.ru.
 // Запуск: npm run auth — откройте выведенную ссылку, авторизуйтесь,
 // сервер примет code, обменяет его на токены и сохранит в .env.
-require('dotenv').config();
-const http = require('http');
-const url = require('url');
-const fs = require('fs');
-const path = require('path');
-const axios = require('axios');
+import 'dotenv/config';
+import http from "http";
+import url from "url";
+import fs from "fs";
+import path from "path";
+import axios from "axios";
 
 const env = {
   clientId: process.env.HH_CLIENT_ID,

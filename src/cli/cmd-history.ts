@@ -1,7 +1,7 @@
 // Команда history: показать историю откликов.
-const fs = require('fs');
-const path = require('path');
-const log = require('../logger');
+import fs from "fs";
+import path from "path";
+import log from "../logger.js";
 
 async function history(opts = {}) {
   const file = path.join(__dirname, '..', '..', 'data', 'history.json');
@@ -36,4 +36,4 @@ async function history(opts = {}) {
   }
 }
 
-module.exports = history;
+export default history;

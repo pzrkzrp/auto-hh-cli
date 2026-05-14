@@ -1,5 +1,5 @@
-const OpenAI = require('openai');
-const log = require('./logger');
+import OpenAI from "openai";
+import log from "./logger.js";
 
 async function retryOnTransient(fn, maxRetries = 2) {
   for (let attempt = 0; ; attempt++) {
@@ -18,4 +18,4 @@ async function retryOnTransient(fn, maxRetries = 2) {
   }
 }
 
-module.exports = { retryOnTransient };
+export { retryOnTransient };

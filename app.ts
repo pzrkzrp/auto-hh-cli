@@ -1,6 +1,7 @@
 // Для обратной совместимости: `node app.js` = `auto-hh search`
-require('dotenv').config();
-const search = require('./src/cli/cmd-search');
+import 'dotenv/config';
+import search from './src/cli/cmd-search';
+
 search()
   .then(() => process.exit(0))
   .catch(err => {

@@ -1,6 +1,6 @@
 // Простой логгер с уровнями и записью в файл.
-const fs = require('fs');
-const path = require('path');
+import fs from "fs";
+import path from "path";
 
 const LOG_FILE = path.join(__dirname, '..', 'data', 'app.log');
 
@@ -18,9 +18,9 @@ function write(level, msg, meta) {
   fs.appendFileSync(LOG_FILE, line + '\n');
 }
 
-module.exports = {
-  info: (m, meta) => write('INFO', m, meta),
-  warn: (m, meta) => write('WARN', m, meta),
-  error: (m, meta) => write('ERROR', m, meta),
-  debug: (m, meta) => process.env.DEBUG && write('DEBUG', m, meta),
-};
+const info = (m, meta?) => write('INFO', m, meta);
+const warn = (m, meta?) => write('WARN', m, meta);
+const error = (m, meta?) => write('ERROR', m, meta);
+const debug = (m, meta?) => process.env.DEBUG && write('DEBUG', m, meta);
+
+export default { info, warn, error, debug };

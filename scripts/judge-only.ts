@@ -6,12 +6,12 @@
 //   node scripts/judge-only.js --id 127784576           # одна вакансия по id
 //   node scripts/judge-only.js --id 127784576 --force   # перегнать даже если есть в кэше
 //   node scripts/judge-only.js --reset-judgements       # сбросить все результаты и перегнать
-require('dotenv').config();
-const collectCache = require('../src/collect-cache');
-const { loadResume } = require('../src/resume');
-const { loadConfig } = require('../src/config');
-const { judgeVacancy, judgeVacanciesBatch } = require('../src/judge');
-const log = require('../src/logger');
+import 'dotenv/config';
+import collectCache from "../src/cache.js";
+import {  loadResume  } from "../src/resume.js";
+import {  loadConfig  } from "../src/config.js";
+import {  judgeVacancy, judgeVacanciesBatch  } from "../src/judge.js";
+import log from "../src/logger.js";
 
 function printVerdict(v, j) {
   const icon = j.fit ? '✓' : '✗';

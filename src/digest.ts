@@ -1,5 +1,5 @@
-const fs = require('fs');
-const path = require('path');
+import fs from "fs";
+import path from "path";
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 
@@ -23,4 +23,4 @@ function writeRejected(entries) {
   return file;
 }
 
-module.exports = { writeDigest, writeRejected };
+export { writeDigest, writeRejected };

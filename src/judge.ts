@@ -1,7 +1,7 @@
-const log = require('./logger');
-const { retryOnTransient } = require('./retry');
-const { loadConfig } = require('./config');
-const { getClient, stripHtml, parseJSON, buildResumeBlock } = require('./claude');
+import log from "./logger.js";
+import {  retryOnTransient  } from "./retry.js";
+import {  loadConfig  } from "./config";
+import {  getClient, stripHtml, parseJSON, buildResumeBlock  } from "./claude.js";
 
 const apiConfig = loadConfig().api || {};
 
@@ -187,4 +187,4 @@ async function judgeVacanciesBatch(resume, vacancies, opts = {}) {
   }
 }
 
-module.exports = { judgeVacancy, judgeVacanciesBatch };
+export { judgeVacancy, judgeVacanciesBatch };

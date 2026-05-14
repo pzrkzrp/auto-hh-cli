@@ -80,4 +80,4 @@ function vacancyMatchesFilter(vacancy, filter) {
   return { ok: true, matchedSkills };
 }
 
-module.exports = { vacancyMatchesFilter };
+export { vacancyMatchesFilter };

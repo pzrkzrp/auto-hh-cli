@@ -3,11 +3,11 @@
 // сайт hh.ru как обычный браузер и забираем JSON из <template id="HH-Lux-InitialState">,
 // в котором лежит полное состояние страницы (vacancySearchResult / vacancyView).
 // Возвращаемые объекты приведены к формату прежнего API hh.ru, чтобы остальной код не менять.
-const path = require('path');
-const fs = require('fs');
-const { chromium } = require('playwright');
-const { env } = require('./config');
-const log = require('./logger');
+import path from "path";
+import fs from "fs";
+import {  chromium  } from "playwright";
+import {  env  } from "./config.js";
+import log from "./logger.js";
 
 const PROFILE = path.resolve(process.env.PW_USER_DATA_DIR || './data/browser-profile');
 
@@ -198,4 +198,4 @@ class HHClient {
   }
 }
 
-module.exports = HHClient;
+export default HHClient;

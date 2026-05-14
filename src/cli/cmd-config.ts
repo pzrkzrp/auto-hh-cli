@@ -1,9 +1,9 @@
 // Команда config: показать текущую конфигурацию.
-const { loadConfig } = require('../config');
+import {  loadConfig  } from "../config.js";
 
 async function configCmd() {
   const cfg = loadConfig();
   console.log(JSON.stringify(cfg, null, 2));
 }
 
-module.exports = configCmd;
+export default configCmd;

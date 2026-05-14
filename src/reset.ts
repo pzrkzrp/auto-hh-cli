@@ -1,8 +1,8 @@
 // Сброс истории, кэша и дайджестов.
-const fs = require('fs');
-const path = require('path');
-const collectCache = require('./cache');
-const log = require('./logger');
+import fs from "fs";
+import path from "path";
+import collectCache from "./cache.js";
+import log from "./logger.js";
 
 function resetData() {
   const dir = path.join(__dirname, '..', 'data');
@@ -24,4 +24,4 @@ function resetData() {
   }
 }
 
-module.exports = resetData;
+export default resetData;

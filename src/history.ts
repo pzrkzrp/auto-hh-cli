@@ -1,6 +1,6 @@
 // Хранилище истории откликов в JSON-файле.
-const fs = require('fs');
-const path = require('path');
+import fs from "fs";
+import path from "path";
 
 const HISTORY_FILE = path.join(__dirname, '..', 'data', 'history.json');
 
@@ -43,4 +43,6 @@ function isSeen(vacancyId) {
   return Boolean(s.seen[vacancyId] || s.applied[vacancyId]);
 }
 
-module.exports = { load, markApplied, markSeen, isApplied, isSeen };
+const _default = { load, markApplied, markSeen, isApplied, isSeen };
+export default _default;
+export { load, markApplied, markSeen, isApplied, isSeen };

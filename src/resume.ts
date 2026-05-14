@@ -1,7 +1,7 @@
 // Загрузка резюме из локального файла. Поддерживает .txt / .md / .pdf.
 // Для PDF используется base64 + блок document в API Claude.
-const fs = require('fs');
-const path = require('path');
+import fs from "fs";
+import path from "path";
 
 function loadResume() {
   const p = process.env.RESUME_PATH;
@@ -25,4 +25,4 @@ function loadResume() {
   };
 }
 
-module.exports = { loadResume };
+export { loadResume };

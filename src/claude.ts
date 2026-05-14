@@ -1,4 +1,4 @@
-const OpenAI = require('openai');
+import OpenAI from "openai";
 
 let client = null;
 let lastConfig = null;
@@ -38,4 +38,4 @@ function buildResumeBlock(resume) {
   return { type: 'text', text: `=== РЕЗЮМЕ СОИСКАТЕЛЯ ===\n${resume.text}` };
 }
 
-module.exports = { getClient, stripHtml, parseJSON, buildResumeBlock };
+export { getClient, stripHtml, parseJSON, buildResumeBlock };

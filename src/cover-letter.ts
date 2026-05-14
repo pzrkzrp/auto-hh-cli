@@ -2,11 +2,11 @@
 // Использует OpenAI-совместимый API (OpenAI, Deepseek и т.п.).
 // Если API-ключ не задан — fallback на шаблон из config.json с плейсхолдерами:
 //   {title}, {employer}, {matchedSkills}, {area}.
-const OpenAI = require('openai');
-const log = require('./logger');
-const { retryOnTransient } = require('./retry');
-const { loadConfig } = require('./config');
-const { stripHtml, parseJSON } = require('./claude');
+import OpenAI from "openai";
+import log from "./logger.js";
+import {  retryOnTransient  } from "./retry.js";
+import {  loadConfig  } from "./config.js";
+import {  stripHtml, parseJSON  } from "./claude.js";
 
 const apiConfig = loadConfig().api || {};
 
@@ -198,4 +198,4 @@ Telegram: @your_telegram
   return result;
 }
 
-module.exports = { buildCoverLetter, buildCoverLettersBatch };
+export { buildCoverLetter, buildCoverLettersBatch };
