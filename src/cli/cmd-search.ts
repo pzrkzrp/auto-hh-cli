@@ -1,9 +1,9 @@
 // Команда search: поиск, фильтр, Claude → дайджест.
 import path from "path";
-import HHClient from "../hh-client.js";
-import {  loadConfig  } from "../config.js";
-import history from "../history.js";
-import collectCache from "../cache.js";
+import HHClient from "../hh-client";
+import {  loadConfig  } from "../config";
+import history from "../history";
+import * as collectCache from "../cache.js";
 import {  vacancyMatchesFilter  } from "../filter.js";
 import {  buildCoverLetter, buildCoverLettersBatch  } from "../cover-letter.js";
 import {  loadResume  } from "../resume.js";
@@ -24,7 +24,7 @@ async function collectVacancies(client, search, cache) {
       continue;
     }
 
-    const params = {
+    const params: Record<string, any> = {
       text: search.text,
       area: search.area,
       experience: search.experience,
@@ -40,7 +40,7 @@ async function collectVacancies(client, search, cache) {
     const data = await client.searchVacancies(params);
     log.info(`Page ${page}: ${data.items.length} vacancies (total ${data.found})`);
     cache.pages[String(page)] = data.items;
-    collectCache.save(cache);
+    await collectCache.save(cache);
     results.push(...data.items);
     if (page + 1 >= (data.pages || 0)) break;
   }
@@ -74,7 +74,7 @@ async function filterLocally(client, items, cache, cfg) {
         continue;
       }
       cache.fullById[String(item.id)] = full;
-      collectCache.save(cache);
+      await collectCache.save(cache);
     }
 
     const verdict = vacancyMatchesFilter(full, cfg.filter);
@@ -118,7 +118,7 @@ async function judgeWithClaude(resume, candidates, cache, minScore) {
         if (j) {
           judgements.set(String(v.id), j);
           cache.judgements[String(v.id)] = j;
-          collectCache.save(cache);
+          await collectCache.save(cache);
         }
         judgedCount++;
       }
@@ -127,7 +127,7 @@ async function judgeWithClaude(resume, candidates, cache, minScore) {
         judgements.set(id, j);
         cache.judgements[id] = j;
       }
-      collectCache.save(cache);
+      await collectCache.save(cache);
       judgedCount += batch.length;
     }
   }
@@ -201,12 +201,12 @@ async function generateCoverLetters(resume, accepted, cache, dryRun) {
         resume,
         pending.map(a => ({ vacancy: a.full, matchedSkills: a.verdict.matchedSkills })),
         coverBatchSize,
-        (partial) => {
+        async (partial) => {
           for (const [id, letter] of partial.entries()) {
             coverMap.set(id, letter);
             cache.coverLetters[id] = letter;
           }
-          collectCache.save(cache);
+          await collectCache.save(cache);
         },
       );
       for (const [id, letter] of generated.entries()) coverMap.set(id, letter);
@@ -225,7 +225,7 @@ async function buildResults(accepted, coverMap, cache, cfg) {
       coverLetter = buildCoverLetter(cfg.apply.coverLetterTemplate, full, verdict.matchedSkills);
       if (coverLetter) {
         cache.coverLetters[String(full.id)] = coverLetter;
-        collectCache.save(cache);
+        await collectCache.save(cache);
       }
     }
 
@@ -253,10 +253,10 @@ async function buildResults(accepted, coverMap, cache, cfg) {
   return matched;
 }
 
-async function search(opts = {}) {
+async function search(opts: Record<string, any> = {}) {
   if (opts.config) process.env.CONFIG_PATH = opts.config;
   if (opts.reset) {
-    resetData();
+    await resetData();
   }
 
   const cfg = loadConfig();
@@ -276,7 +276,7 @@ async function search(opts = {}) {
     }
 
     log.info('Searching vacancies', cfg.search);
-    const cache = collectCache.load();
+    const cache = await collectCache.load();
     const items = await collectVacancies(client, cfg.search, cache);
 
     const candidates = await filterLocally(client, items, cache, cfg);

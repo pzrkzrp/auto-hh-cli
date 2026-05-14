@@ -2,7 +2,7 @@
 import resetData from "../reset.js";
 
 async function reset() {
-  resetData();
+  await resetData();
 }
 
 export default reset;
