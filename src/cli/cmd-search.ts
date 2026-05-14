@@ -17,7 +17,8 @@ async function collectVacancies(client, search, cache) {
   const startPage = search.start_page || 0;
   const maxPages = search.max_pages || 1;
   for (let page = startPage; page < startPage + maxPages; page++) {
-    const cached = cache.pages[String(page)];
+    // Страницу 0 всегда забираем свежей — на ней новые вакансии.
+    const cached = !page ? null : cache.pages[String(page)];
     if (cached) {
       log.info(`Page ${page}: ${cached.length} vacancies (cached)`);
       results.push(...cached);
@@ -40,7 +41,7 @@ async function collectVacancies(client, search, cache) {
     const data = await client.searchVacancies(params);
     log.info(`Page ${page}: ${data.items.length} vacancies (total ${data.found})`);
     cache.pages[String(page)] = data.items;
-    await collectCache.save(cache);
+    await collectCache.savePage(cache, page);
     results.push(...data.items);
     if (page + 1 >= (data.pages || 0)) break;
   }
@@ -74,7 +75,7 @@ async function filterLocally(client, items, cache, cfg) {
         continue;
       }
       cache.fullById[String(item.id)] = full;
-      await collectCache.save(cache);
+      await collectCache.saveFull(cache, item.id);
     }
 
     const verdict = vacancyMatchesFilter(full, cfg.filter);
@@ -118,7 +119,7 @@ async function judgeWithClaude(resume, candidates, cache, minScore) {
         if (j) {
           judgements.set(String(v.id), j);
           cache.judgements[String(v.id)] = j;
-          await collectCache.save(cache);
+          await collectCache.saveJudgements(cache);
         }
         judgedCount++;
       }
@@ -127,7 +128,7 @@ async function judgeWithClaude(resume, candidates, cache, minScore) {
         judgements.set(id, j);
         cache.judgements[id] = j;
       }
-      await collectCache.save(cache);
+      await collectCache.saveJudgements(cache);
       judgedCount += batch.length;
     }
   }
@@ -205,8 +206,8 @@ async function generateCoverLetters(resume, accepted, cache, dryRun) {
           for (const [id, letter] of partial.entries()) {
             coverMap.set(id, letter);
             cache.coverLetters[id] = letter;
+            await collectCache.saveCoverLetter(cache, id);
           }
-          await collectCache.save(cache);
         },
       );
       for (const [id, letter] of generated.entries()) coverMap.set(id, letter);
@@ -225,7 +226,7 @@ async function buildResults(accepted, coverMap, cache, cfg) {
       coverLetter = buildCoverLetter(cfg.apply.coverLetterTemplate, full, verdict.matchedSkills);
       if (coverLetter) {
         cache.coverLetters[String(full.id)] = coverLetter;
-        await collectCache.save(cache);
+        await collectCache.saveCoverLetter(cache, full.id);
       }
     }
 

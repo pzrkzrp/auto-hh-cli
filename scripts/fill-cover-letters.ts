@@ -22,25 +22,43 @@ async function main() {
   await connect();
   const db = dbInstance();
 
-  // Ищем самый свежий документ cache
-  const cache = await db.collection('cache').findOne({}, { sort: { date: -1 } });
-  if (!cache) {
-    log.error('No cache found in MongoDB');
-    process.exit(1);
+  // Ищем самую свежую дату
+  const dateDoc = await db.collection('cacheJudgements').findOne(
+    {}, { sort: { date: -1 }, projection: { date: 1 } },
+  );
+  const date = dateDoc?.date;
+  if (!date) {
+    log.error('No judgements found in MongoDB');
+    return;
   }
 
-  const { judgements, coverLetters, fullById } = cache;
-  if (!judgements || !Object.keys(judgements).length) {
+  // Загружаем judgements, fullById, coverLetters за эту дату
+  const [judgeDocs, fullDocs, coverDocs] = await Promise.all([
+    db.collection('cacheJudgements').find({ date }).toArray(),
+    db.collection('cacheFull').find({ date }).toArray(),
+    db.collection('cacheCoverLetters').find({ date }).toArray(),
+  ]);
+
+  const judgements: Record<string, any> = {};
+  for (const d of judgeDocs) judgements[d.vacancyId] = d;
+
+  const fullById: Record<string, any> = {};
+  for (const d of fullDocs) fullById[d.vacancyId] = d.full;
+
+  const coverLetters: Record<string, string> = {};
+  for (const d of coverDocs) coverLetters[d.vacancyId] = d.letter;
+
+  if (!Object.keys(judgements).length) {
     log.info('No judgements in cache');
     return;
   }
 
   // Отбираем approved вакансии без письма
   const missing = Object.entries(judgements)
-    .filter(([id, j]) => j.fit && j.score >= minScore && !coverLetters?.[id])
+    .filter(([id, j]) => j.fit && j.score >= minScore && !coverLetters[id])
     .map(([id, j]) => ({
       id,
-      full: fullById?.[id],
+      full: fullById[id],
       judgement: j,
     }));
 
@@ -57,41 +75,35 @@ async function main() {
     .map(m => ({ vacancy: m.full, matchedSkills: [] }));
   const batchSize = parseInt(process.env.COVER_BATCH_SIZE || '10', 10);
 
+  let generatedCount = 0;
   const generated = await buildCoverLettersBatch(resume, items, batchSize, async (partial) => {
-    // Сохраняем прогресс в cache
     for (const [id, letter] of partial.entries()) {
-      cache.coverLetters[id] = letter;
+      await db.collection('cacheCoverLetters').updateOne(
+        { vacancyId: id },
+        { $set: { date, vacancyId: id, letter } },
+        { upsert: true },
+      );
+      generatedCount++;
     }
-    await db.collection('cache').updateOne(
-      { date: cache.date },
-      { $set: { coverLetters: cache.coverLetters } },
-    );
-    log.info(`Progress: ${partial.size}/${items.length} letters generated`);
+    log.info(`Progress: ${generatedCount}/${items.length} letters generated`);
   });
 
-  // Обновляем cache финально
-  for (const [id, letter] of generated.entries()) {
-    cache.coverLetters[id] = letter;
-  }
-  await db.collection('cache').updateOne(
-    { date: cache.date },
-    { $set: { coverLetters: cache.coverLetters } },
-  );
-
   // Обновляем digest — добавляем письма в entry.coverLetter
-  const digest = await db.collection('digest').findOne({ date: cache.date });
+  const digest = await db.collection('digest').findOne({ date });
   if (digest?.entries) {
     let updated = 0;
     for (const entry of digest.entries) {
-      const letter = cache.coverLetters[String(entry.id)];
-      if (letter && !entry.coverLetter) {
-        entry.coverLetter = letter;
-        updated++;
+      if (!entry.coverLetter) {
+        const cover = await db.collection('cacheCoverLetters').findOne({ vacancyId: String(entry.id) });
+        if (cover?.letter) {
+          entry.coverLetter = cover.letter;
+          updated++;
+        }
       }
     }
     if (updated) {
       await db.collection('digest').updateOne(
-        { date: cache.date },
+        { date },
         { $set: { entries: digest.entries } },
       );
       log.info(`Digest updated: ${updated} cover letters added`);

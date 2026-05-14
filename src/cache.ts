@@ -1,9 +1,5 @@
-// Кэш собранных вакансий в MongoDB.
-// Одна запись на дату: { date, pages, fullById, judgements, coverLetters }
+// Кэш в отдельных MongoDB коллекциях: cachePages, cacheFull, cacheJudgements, cacheCoverLetters.
 import { connect, dbInstance } from "./db.js";
-import { Collection } from "mongodb";
-
-const COLLECTION = 'cache';
 
 function dateKey(d?: Date): string {
   return (d || new Date()).toISOString().slice(0, 10);
@@ -17,51 +13,85 @@ export interface CacheDoc {
   coverLetters: Record<string, string>;
 }
 
-function empty(): CacheDoc {
-  return { date: '', pages: {}, fullById: {}, judgements: {}, coverLetters: {} };
-}
-
-async function col(): Promise<Collection<CacheDoc>> {
-  await connect();
-  return dbInstance().collection<CacheDoc>(COLLECTION);
-}
-
 export async function load(date?: Date): Promise<CacheDoc> {
-  const c = await col();
+  await connect();
+  const db = dbInstance();
   const key = dateKey(date);
-  const doc = await c.findOne({ date: key });
-  if (!doc) return { date: key, ...empty() };
-  return {
-    date: doc.date,
-    pages: doc.pages || {},
-    fullById: doc.fullById || {},
-    judgements: doc.judgements || {},
-    coverLetters: doc.coverLetters || {},
-  };
+
+  const [pageDocs, fullDocs, judgeDocs, coverDocs] = await Promise.all([
+    db.collection('cachePages').find({ date: key }).toArray(),
+    db.collection('cacheFull').find({ date: key }).toArray(),
+    db.collection('cacheJudgements').find({ date: key }).toArray(),
+    db.collection('cacheCoverLetters').find({ date: key }).toArray(),
+  ]);
+
+  const pages: Record<string, any[]> = {};
+  for (const d of pageDocs) pages[String(d.page)] = d.items;
+
+  const fullById: Record<string, any> = {};
+  for (const d of fullDocs) fullById[d.vacancyId] = d.full;
+
+  const judgements: Record<string, any> = {};
+  for (const d of judgeDocs) {
+    const { vacancyId, _id, date: _, ...rest } = d;
+    judgements[vacancyId] = rest;
+  }
+
+  const coverLetters: Record<string, string> = {};
+  for (const d of coverDocs) coverLetters[d.vacancyId] = d.letter;
+
+  return { date: key, pages, fullById, judgements, coverLetters };
 }
 
-export async function save(state: CacheDoc, date?: Date): Promise<void> {
-  const c = await col();
+export async function savePage(state: CacheDoc, pageNum: number, date?: Date): Promise<void> {
+  await connect();
+  await dbInstance().collection('cachePages').updateOne(
+    { date: dateKey(date), page: pageNum },
+    { $set: { items: state.pages?.[String(pageNum)] || [] } },
+    { upsert: true },
+  );
+}
+
+export async function saveFull(state: CacheDoc, vacancyId: string, date?: Date): Promise<void> {
+  await connect();
+  await dbInstance().collection('cacheFull').updateOne(
+    { vacancyId: String(vacancyId) },
+    { $set: { date: dateKey(date), vacancyId: String(vacancyId), full: state.fullById?.[String(vacancyId)] } },
+    { upsert: true },
+  );
+}
+
+export async function saveJudgements(state: CacheDoc, date?: Date): Promise<void> {
+  await connect();
+  const db = dbInstance();
   const key = dateKey(date);
-  await c.updateOne(
-    { date: key },
-    {
-      $set: {
-        pages: state.pages || {},
-        fullById: state.fullById || {},
-        judgements: state.judgements || {},
-        coverLetters: state.coverLetters || {},
-      },
-    },
+  const coll = db.collection('cacheJudgements');
+  await coll.deleteMany({ date: key });
+  const docs = Object.entries(state.judgements || {}).map(([vid, j]) => ({
+    date: key, vacancyId: vid, score: j.score, fit: j.fit,
+    reason: j.reason, redFlags: j.redFlags || [],
+  }));
+  if (docs.length) await coll.insertMany(docs);
+}
+
+export async function saveCoverLetter(state: CacheDoc, vacancyId: string, date?: Date): Promise<void> {
+  await connect();
+  await dbInstance().collection('cacheCoverLetters').updateOne(
+    { vacancyId: String(vacancyId) },
+    { $set: { date: dateKey(date), vacancyId: String(vacancyId), letter: state.coverLetters?.[String(vacancyId)] || '' } },
     { upsert: true },
   );
 }
 
 export async function clear(): Promise<string[]> {
-  const c = await col();
-  const docs = await c.find({}, { projection: { date: 1 } }).toArray();
-  const removed = docs.map(d => `cache:${d.date}`);
-  if (removed.length) await c.deleteMany({});
+  await connect();
+  const db = dbInstance();
+  const collections = ['cachePages', 'cacheFull', 'cacheJudgements', 'cacheCoverLetters'];
+  const removed: string[] = [];
+  for (const coll of collections) {
+    const r = await db.collection(coll).deleteMany({});
+    if (r.deletedCount) removed.push(`${coll}: ${r.deletedCount}`);
+  }
   return removed;
 }
 
