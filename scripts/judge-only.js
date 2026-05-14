@@ -63,7 +63,7 @@ async function main() {
   // --- Режим всех вакансий ---
   const vacancies = Object.values(cache.fullById);
   if (!vacancies.length) {
-    log.error('No vacancies in cache. Run index.js first to collect them.');
+    log.error('No vacancies in cache. Run app.js first to collect them.');
     process.exit(1);
   }
 

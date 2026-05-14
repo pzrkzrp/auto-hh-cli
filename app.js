@@ -1,4 +1,5 @@
-// Для обратной совместимости: `node index.js` = `auto-hh search`
+// Для обратной совместимости: `node app.js` = `auto-hh search`
+require('dotenv').config();
 const search = require('./src/cli/cmd-search');
 search()
   .then(() => process.exit(0))

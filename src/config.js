@@ -1,5 +1,4 @@
 // Загрузка конфигурации из JSON и .env.
-require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 

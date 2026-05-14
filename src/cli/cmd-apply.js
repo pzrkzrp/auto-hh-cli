@@ -1,5 +1,4 @@
 // Команда apply: отклик через Playwright.
-require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright');
@@ -24,20 +23,36 @@ function loadLatestDigest() {
   const dir = path.join(__dirname, '..', '..', 'data');
   if (!fs.existsSync(dir)) throw new Error('No data dir, run `auto-hh search` first');
   const files = fs.readdirSync(dir)
-    .filter(f => /^digest-.*\.json$/.test(f))
+    .filter(f => /^digest-.*\.(json|md)$/.test(f))
     .sort()
     .reverse();
   if (!files.length) throw new Error('No digest files. Run `auto-hh search` first');
   const file = path.join(dir, files[0]);
-  const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
   log.info(`Using digest: ${file}`);
-  return (data.matched || []).map(e => ({
-    id: String(e.id),
-    url: e.url,
-    coverLetter: e.coverLetter || '',
-    title: e.title,
-    employer: e.employer,
-  }));
+
+  if (file.endsWith('.json')) {
+    const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
+    return (data.matched || []).map(e => ({
+      id: String(e.id),
+      url: e.url,
+      coverLetter: e.coverLetter || '',
+      title: e.title,
+      employer: e.employer,
+    }));
+  }
+
+  // Парсинг старого формата .md
+  const text = fs.readFileSync(file, 'utf-8');
+  const entries = [];
+  for (const block of text.split(/\n---\n/)) {
+    const url = block.match(/Ссылка:\s*(\S+)/)?.[1];
+    const cover = block.match(/\*\*Сопроводительное:\*\*\n\n([\s\S]*?)$/m)?.[1]?.trim();
+    if (!url) continue;
+    const id = url.match(/vacancy\/(\d+)/)?.[1];
+    if (!id) continue;
+    entries.push({ id, url, coverLetter: cover || '' });
+  }
+  return entries;
 }
 
 async function applyToVacancy(page, entry) {

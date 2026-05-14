@@ -2,6 +2,7 @@
   "name": "auto-hh",
   "version": "1.0.0",
   "description": "Search & filter vacancies on hh.ru, apply via Playwright",
+  "main": "app.js",
   "bin": {
     "auto-hh": "./bin/auto-hh"
   },
