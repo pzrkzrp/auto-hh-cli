@@ -10,7 +10,7 @@ function getClient(apiConfig) {
   const key = cfg.apiKey || process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY;
   if (!key) return null;
 
-  const opts = { apiKey: key, maxRetries: 3 };
+  const opts: Record<string, any> = { apiKey: key, maxRetries: 3 };
   if (cfg.baseUrl) opts.baseURL = cfg.baseUrl;
 
   client = new OpenAI(opts);

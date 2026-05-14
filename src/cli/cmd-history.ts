@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import log from "../logger.js";
 
-async function history(opts = {}) {
+async function history(opts: Record<string, any> = {}) {
   const file = path.join(__dirname, '..', '..', 'data', 'history.json');
   if (!fs.existsSync(file)) {
     log.info('No history yet.');
@@ -21,8 +21,9 @@ async function history(opts = {}) {
   if (applied.length) {
     console.log(`\n=== Откликнулся (${applied.length}) ===`);
     for (const [id, meta] of applied.slice(-20)) {
-      console.log(`  ${meta.title || id} @ ${meta.employer || '?'} [${meta.score ?? '?'}/10]`);
-      console.log(`    ${meta.url || ''}`);
+      const m = meta as Record<string, any>;
+      console.log(`  ${m.title || id} @ ${m.employer || '?'} [${m.score ?? '?'}/10]`);
+      console.log(`    ${m.url || ''}`);
     }
   } else {
     console.log('\nНет откликов.');

@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import log from "../logger.js";
 
-async function digest(opts = {}) {
+async function digest(opts: Record<string, any> = {}) {
   const dir = path.join(__dirname, '..', '..', 'data');
   if (!fs.existsSync(dir)) {
     log.error('No data dir. Run `auto-hh search` first.');

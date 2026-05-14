@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @ts-nocheck
 // Собирает digest из сегодняшнего кэша: фильтр → judge → cover letters → digest.
 // Не ходит в hh.ru, использует только кэшированные данные.
 import 'dotenv/config';

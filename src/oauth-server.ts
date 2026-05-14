@@ -47,10 +47,10 @@ const server = http.createServer(async (req, res) => {
   try {
     const { data } = await axios.post('https://api.hh.ru/token', new URLSearchParams({
       grant_type: 'authorization_code',
-      client_id: env.clientId,
-      client_secret: env.clientSecret,
+      client_id: env.clientId!,
+      client_secret: env.clientSecret!,
       redirect_uri: env.redirectUri,
-      code,
+      code: String(code),
     }).toString(), {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     });

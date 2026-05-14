@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import log from "./logger.js";
 
-async function retryOnTransient(fn, maxRetries = 2) {
+async function retryOnTransient(fn: () => Promise<unknown>, maxRetries = 2) {
   for (let attempt = 0; ; attempt++) {
     try {
       return await fn();

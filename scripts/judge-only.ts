@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @ts-nocheck
 // Прогоняет judge по вакансиям из кэша, минуя hh и историю.
 // Использование:
 //   node scripts/judge-only.js                          # все вакансии из сегодняшнего кэша

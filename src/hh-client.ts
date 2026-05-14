@@ -1,3 +1,4 @@
+// @ts-nocheck
 // Клиент к hh.ru через Playwright-скрейпинг.
 // API api.hh.ru заблокирован ddos-guard для нашего IP, поэтому ходим на основной
 // сайт hh.ru как обычный браузер и забираем JSON из <template id="HH-Lux-InitialState">,

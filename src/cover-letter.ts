@@ -13,7 +13,7 @@ const apiConfig = loadConfig().api || {};
 function getClient() {
   const key = apiConfig.apiKey || process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY;
   if (!key) return null;
-  const opts = { apiKey: key, maxRetries: 3 };
+  const opts: Record<string, any> = { apiKey: key, maxRetries: 3 };
   if (apiConfig.baseUrl) opts.baseURL = apiConfig.baseUrl;
   return new OpenAI(opts);
 }
@@ -45,7 +45,7 @@ async function buildWithClaude(vacancy, matchedSkills) {
   const profile = process.env.APPLICANT_PROFILE || 'опытный разработчик';
   const model = process.env.CLAUDE_MODEL || 'gpt-4o';
 
-  const description = stripHtml(vacancy.description).slice(0, 4000);
+  const description = stripHtml(vacancy.description).slice(0, 1000);
   const skills = (vacancy.key_skills || []).map(s => s.name).join(', ');
 
   const userMsg = `Вакансия: ${vacancy.name}
@@ -87,7 +87,7 @@ Telegram: @your_telegram
         },
         { role: 'user', content: userMsg },
       ],
-    }));
+    })) as any;
     const text = resp.choices?.[0]?.message?.content?.trim();
     if (text) {
       log.debug(`Claude usage: in=${resp.usage?.prompt_tokens} out=${resp.usage?.completion_tokens}`);
@@ -105,8 +105,32 @@ async function buildCoverLetter(template, vacancy, matchedSkills) {
   return buildFromTemplate(template, vacancy, matchedSkills);
 }
 
+function buildBatchSystemText(profile: string): string {
+  return `Ты помогаешь соискателю писать сопроводительные письма для откликов на hh.ru. Профиль соискателя: ${profile}
+Для каждой вакансии напиши короткое сопроводительное от первого лица в официально-деловом стиле. ЖЁСТКОЕ ограничение: **300–400 символов включая пробелы и подпись с Telegram**. 2–4 предложения.
+
+Образец:
+"""
+Здравствуйте! Заинтересовала ваша вакансия — профиль полностью совпадает с моим опытом. Последние несколько лет работаю с React и NestJS, уверенно владею SQL/ORM, есть опыт с Next.js и SSR. Буду рад обсудить детали на созвоне.
+Telegram: @your_telegram
+"""
+
+Правила:
+- Официально-деловой, нейтрально-вежливый тон. Полные предложения, грамотный русский. Без разговорности и сленга.
+- Избегай канцеляритных штампов ("рассмотрите мою кандидатуру", "готов внести вклад в развитие"): по делу, но корректно.
+- Начни с "Здравствуйте!".
+- 1–2 конкретных совпадения из описания вакансии.
+- Без markdown, без "С уважением", без имени в подписи.
+- Заверши строкой "Telegram: @your_telegram".
+- Проверь длину: 300–400 символов.
+
+Верни ТОЛЬКО JSON в формате:
+{"letters": [{"vacancyId": "id", "coverLetter": "текст"}, ...]}
+Никаких пояснений, никакого markdown, только JSON.`;
+}
+
 function formatVacancyShort(vacancy, matchedSkills) {
-  const description = stripHtml(vacancy.description).slice(0, 3000);
+  const description = stripHtml(vacancy.description).slice(0, 1000);
   const skills = (vacancy.key_skills || []).map(s => s.name).join(', ');
   return `vacancyId: ${vacancy.id}
 Название: ${vacancy.name}
@@ -131,69 +155,70 @@ async function buildCoverLettersBatch(resume, items, batchSize = 1, onBatch = nu
   const profile = process.env.APPLICANT_PROFILE || 'опытный разработчик';
   const resumeBlock = buildResumeBlock(resume);
 
-  const systemText = `Ты помогаешь соискателю писать сопроводительные письма для откликов на hh.ru. Профиль соискателя: ${profile}
+  const systemText = buildBatchSystemText(profile);
 
-Для каждой вакансии напиши короткое сопроводительное от первого лица в официально-деловом стиле. ЖЁСТКОЕ ограничение: **300–400 символов включая пробелы и подпись с Telegram**. 2–4 предложения.
-
-Образец:
-"""
-Здравствуйте! Заинтересовала ваша вакансия — профиль полностью совпадает с моим опытом. Последние несколько лет работаю с React и NestJS, уверенно владею SQL/ORM, есть опыт с Next.js и SSR. Буду рад обсудить детали на созвоне.
-Telegram: @your_telegram
-"""
-
-Правила:
-- Официально-деловой, нейтрально-вежливый тон. Полные предложения, грамотный русский. Без разговорности и сленга.
-- Избегай канцеляритных штампов ("рассмотрите мою кандидатуру", "готов внести вклад в развитие"): по делу, но корректно.
-- Начни с "Здравствуйте!".
-- 1–2 конкретных совпадения из описания вакансии.
-- Без markdown, без "С уважением", без имени в подписи.
-- Заверши строкой "Telegram: @your_telegram".
-- Проверь длину: 300–400 символов.
-
-Верни ТОЛЬКО JSON в формате:
-{"letters": [{"vacancyId": "id", "coverLetter": "текст"}, ...]}
-Никаких пояснений, никакого markdown, только JSON.`;
-
+  const batchTexts = [];
   for (let i = 0; i < items.length; i += batchSize) {
     const batch = items.slice(i, i + batchSize);
-    const text = batch.map((it, idx) =>
-      `=== ВАКАНСИЯ #${idx + 1} ===\n${formatVacancyShort(it.vacancy, it.matchedSkills)}`
-    ).join('\n\n');
+    batchTexts.push({
+      idx: batchTexts.length + 1,
+      batch,
+      text: batch.map((it, idx) =>
+        `=== ВАКАНСИЯ #${idx + 1} ===\n${formatVacancyShort(it.vacancy, it.matchedSkills)}`
+      ).join('\n\n'),
+    });
+  }
 
+  let nextBatchIdx = 0;
+  const CONCURRENCY = 3;
+
+  async function runBatch(ii) {
+    const { idx, batch, text } = batchTexts[ii];
+    const messages = [
+      { role: 'system', content: systemText },
+      {
+        role: 'user',
+        content: [
+          ...(resumeBlock ? [resumeBlock] : []),
+          { type: 'text' as const, text },
+        ] as any,
+      },
+    ] as any;
     try {
       const resp = await retryOnTransient(() => client.chat.completions.create({
         model,
-        max_tokens: 16000,
-        messages: [
-          { role: 'system', content: systemText },
-          {
-            role: 'user',
-            content: [
-              ...(resumeBlock ? [resumeBlock] : []),
-              { type: 'text', text },
-            ],
-          },
-        ],
+        max_tokens: 4000,
+        messages,
       }));
 
-      const content = resp.choices?.[0]?.message?.content;
-      console.log(content)
+      const r = resp as any;
+      const content = r.choices?.[0]?.message?.content;
       if (!content) {
-        log.warn(`cover batch ${i / batchSize + 1}: empty response`);
-        continue;
+        log.warn(`cover batch ${idx}: empty response`);
+        return;
       }
       const parsed = parseJSON(content);
       for (const l of parsed.letters || []) {
         if (l.vacancyId && l.coverLetter) result.set(String(l.vacancyId), l.coverLetter);
       }
-      log.debug(`cover batch ${i / batchSize + 1}: ${batch.length} letters, in=${resp.usage?.prompt_tokens || 0} out=${resp.usage?.completion_tokens || 0}`);
+      log.debug(`cover batch ${idx}: ${batch.length} letters, in=${r.usage?.prompt_tokens || 0} out=${r.usage?.completion_tokens || 0}`);
       if (onBatch) {
         try { await onBatch(result); } catch (e) { log.warn(`cover onBatch callback failed: ${e.message}`); }
       }
     } catch (err) {
-      log.warn(`cover batch failed (${batch.length} items): ${err.message}`);
+      log.warn(`cover batch ${idx} failed (${batch.length} items): ${err.message}`);
     }
   }
+
+  async function worker() {
+    while (nextBatchIdx < batchTexts.length) {
+      const ii = nextBatchIdx;
+      nextBatchIdx++;
+      await runBatch(ii);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, batchTexts.length) }, () => worker()));
 
   return result;
 }

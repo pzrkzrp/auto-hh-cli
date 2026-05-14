@@ -4,8 +4,8 @@
     "area": [1, 2],
     "only_with_salary": false,
     "per_page": 50,
-    "start_page": 11,
-    "max_pages": 10,
+    "start_page": 0,
+    "max_pages": 40,
     "schedule": null,
     "employment": null
   },
@@ -23,6 +23,6 @@
     "maxPerRun": 30,
     "dryRun": false,
     "minClaudeScore": 7,
-    "coverLetterTemplate": "Привет!\n\nУвидел вакансию «{title}» — выглядит как то, чем мне интересно заниматься. По стеку пересекаемся: на {matchedSkills} писал последние пару лет в продакшене, так что включусь быстро.\n\nЕсли есть смысл созвониться и обсудить задачи подробнее — я на связи.\n\nИван\nTelegram: @your_telegram"
+    "coverLetterTemplate": "Привет!\n\nУвидел вашу вакансию — выглядит как то, чем мне интересно заниматься. По стеку пересекаемся: на {matchedSkills} писал последние пару лет в продакшене, так что включусь быстро.\n\nЕсли есть смысл созвониться и обсудить задачи подробнее — я на связи.\n\nИван\nTelegram: @your_telegram"
   }
 }

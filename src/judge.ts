@@ -90,7 +90,7 @@ vacancyId скопируй из поля id вакансии (оно перво�
 Никаких пояснений, никакого markdown, только один JSON-объект.`;
 }
 
-async function judgeVacancy(resume, vacancy, opts = {}) {
+async function judgeVacancy(resume, vacancy, opts: Record<string, any> = {}) {
   const c = getClient(apiConfig);
   if (!c) return null;
 
@@ -121,10 +121,10 @@ async function judgeVacancy(resume, vacancy, opts = {}) {
       messages,
       response_format: { type: 'json_object' },
     }));
-    const text = resp.choices?.[0]?.message?.content;
+    const text = (resp as any).choices?.[0]?.message?.content;
     if (!text) return null;
     const parsed = parseJSON(text);
-    log.debug(`judge ${vacancy.id}: score=${parsed.score} fit=${parsed.fit} in=${resp.usage?.prompt_tokens} out=${resp.usage?.completion_tokens}`);
+    log.debug(`judge ${vacancy.id}: score=${parsed.score} fit=${parsed.fit} in=${(resp as any).usage?.prompt_tokens} out=${(resp as any).usage?.completion_tokens}`);
     return parsed;
   } catch (err) {
     log.warn(`judge failed for ${vacancy.id}: ${err.message}`);
@@ -134,7 +134,7 @@ async function judgeVacancy(resume, vacancy, opts = {}) {
 
 // Батчевая версия: судит пачку вакансий за один запрос.
 // Возвращает Map<vacancyId, verdict> (verdict в том же формате, что judgeVacancy).
-async function judgeVacanciesBatch(resume, vacancies, opts = {}) {
+async function judgeVacanciesBatch(resume, vacancies, opts: Record<string, any> = {}) {
   const c = getClient(apiConfig);
   if (!c) return null;
   if (!vacancies.length) return new Map();
@@ -169,12 +169,12 @@ async function judgeVacanciesBatch(resume, vacancies, opts = {}) {
       response_format: { type: 'json_object' },
     }));
     console.log(resp)
-    const text = resp.choices?.[0]?.message?.content;
+    const text = (resp as any).choices?.[0]?.message?.content;
     if (!text) return null;
     const parsed = parseJSON(text);
     console.dir({parsed}, {depth: null})
 
-    log.debug(`judge batch ${vacancies.length}: in=${resp.usage?.prompt_tokens || 0} out=${resp.usage?.completion_tokens || 0}`);
+    log.debug(`judge batch ${vacancies.length}: in=${(resp as any).usage?.prompt_tokens || 0} out=${(resp as any).usage?.completion_tokens || 0}`);
 
     const map = new Map();
     for (const verdict of parsed.verdicts || []) {

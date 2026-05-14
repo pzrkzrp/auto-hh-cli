@@ -9,7 +9,7 @@ function ensureDir() {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
-function write(level, msg, meta) {
+function write(level: string, msg: string, meta?: any) {
   ensureDir();
   const ts = new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow', hour12: false }).replace(',', '');
   const line = `[${ts}] [${level}] ${msg}` +
