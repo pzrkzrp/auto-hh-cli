@@ -11,7 +11,10 @@
     "apply": "node bin/auto-hh apply",
     "login": "node bin/auto-hh apply --login",
     "build": "tsc",
-    "watch": "tsc --watch"
+    "watch": "tsc --watch",
+    "migrate:up": "migrate-mongo up",
+    "migrate:down": "migrate-mongo down",
+    "migrate:create": "migrate-mongo create"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
@@ -19,6 +22,7 @@
     "axios": "^1.7.7",
     "commander": "^14.0.3",
     "dotenv": "^16.4.5",
+    "migrate-mongo": "^14.0.7",
     "mongodb": "^7.2.0",
     "openai": "^6.37.0",
     "playwright": "^1.48.0",
