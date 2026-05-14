@@ -10,7 +10,7 @@ async function retryOnTransient(fn: () => Promise<unknown>, maxRetries = 2) {
       if (err instanceof OpenAI.RateLimitError || err instanceof OpenAI.InternalServerError || err instanceof OpenAI.APIError) {
         const delay = Math.min(1000 * Math.pow(2, attempt), 8000);
         log.debug(`retry attempt ${attempt + 1}/${maxRetries} after ${delay}ms: ${err.message}`);
-        await new Promise(r => setTimeout(r, delay));
+        await new Promise((resolve) => setTimeout(resolve, delay));
         continue;
       }
       throw err;

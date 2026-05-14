@@ -5,52 +5,6 @@ import {  getClient, stripHtml, parseJSON, buildResumeBlock  } from "./claude.js
 
 const apiConfig = loadConfig().api || {};
 
-// const JUDGE_SCHEMA = {
-//   type: 'object',
-//   additionalProperties: false,
-//   properties: {
-//     vacancyId: { type: 'string', description: 'id вакансии' },
-//     fit: { type: 'boolean', description: 'Стоит ли откликаться' },
-//     score: { type: 'integer', description: 'Соответствие резюме вакансии, 1..10' },
-//     reason: { type: 'string', description: '1-2 предложения почему' },
-//     redFlags: {
-//       type: 'array',
-//       items: { type: 'string' },
-//       description: 'Несоответствия: стек, опыт, локация, ЗП и т.п.',
-//     },
-//     coverLetter: {
-//       type: 'string',
-//       description: 'Если fit=true — короткое сопроводительное (4-6 предложений) от первого лица. Иначе пустая строка.',
-//     },
-//   },
-//   required: ['vacancyId', 'fit', 'score', 'reason', 'redFlags', 'coverLetter'],
-// };
-//
-// const BATCH_JUDGE_SCHEMA = {
-//   type: 'object',
-//   additionalProperties: false,
-//   properties: {
-//     verdicts: {
-//       type: 'array',
-//       description: 'По одной записи на каждую вакансию в том же порядке, что во входе.',
-//       items: {
-//         type: 'object',
-//         additionalProperties: false,
-//         properties: {
-//           vacancyId: { type: 'string', description: 'id вакансии из входа' },
-//           fit: { type: 'boolean' },
-//           score: { type: 'integer' },
-//           reason: { type: 'string' },
-//           redFlags: { type: 'array', items: { type: 'string' } },
-//           coverLetter: { type: 'string' },
-//         },
-//         required: ['vacancyId', 'fit', 'score', 'reason', 'redFlags', 'coverLetter'],
-//       },
-//     },
-//   },
-//   required: ['verdicts'],
-// };
-
 function formatVacancyText(vacancy) {
   const description = stripHtml(vacancy.description).slice(0, 6000);
   const skills = (vacancy.key_skills || []).map(s => s.name).join(', ');

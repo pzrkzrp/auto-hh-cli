@@ -57,11 +57,11 @@ async function buildWithClaude(vacancy, matchedSkills) {
 Описание:
 ${description}
 
-Напиши короткое сопроводительное письмо от моего имени в официально-деловом стиле. ЖЁСТКОЕ ограничение: **300–400 символов включая пробелы и подпись с Telegram**. 2–4 предложения.
+Напиши короткое сопроводительное письмо от моего имени в официально-деловом стиле. 3–5 предложения.
 
 Образец:
 """
-Здравствуйте! Заинтересовала ваша вакансия — профиль полностью совпадает с моим опытом. Последние несколько лет работаю с React и NestJS, уверенно владею SQL/ORM, есть опыт с Next.js и SSR. Буду рад обсудить детали на созвоне.
+Здравствуйте! Заинтересовала вакансия в вашей компании — профиль полностью совпадает с моим опытом. Последние несколько лет работаю с React и NestJS, уверенно владею SQL/ORM, есть опыт с Next.js и SSR. Буду рад обсудить детали на созвоне.
 Telegram: @your_telegram
 """
 
@@ -74,7 +74,8 @@ Telegram: @your_telegram
 - Без markdown, без "С уважением", без имени в подписи.
 - Заверши строкой "Telegram: @your_telegram".
 - Не упоминай зарплату, вилку, ожидания по доходу — ни конкретных цифр, ни общих формулировок ("по рынку", "обсуждаемо" и т.п.).
-- Проверь длину: 300–400 символов.`;
+- Не пиши Заинтересовала вакансия ${vacancy.employer?.name}, а пиши заинтересовала ваша вакансия или вакансия в вашей компании`
+;
 
   try {
     const resp = await retryOnTransient(() => client.chat.completions.create({
@@ -107,7 +108,7 @@ async function buildCoverLetter(template, vacancy, matchedSkills) {
 
 function buildBatchSystemText(profile: string): string {
   return `Ты помогаешь соискателю писать сопроводительные письма для откликов на hh.ru. Профиль соискателя: ${profile}
-Для каждой вакансии напиши короткое сопроводительное от первого лица в официально-деловом стиле. ЖЁСТКОЕ ограничение: **300–400 символов включая пробелы и подпись с Telegram**. 2–4 предложения.
+Для каждой вакансии напиши короткое сопроводительное от первого лица в официально-деловом стиле. 4–5 предложения.
 
 Образец:
 """
@@ -122,7 +123,6 @@ Telegram: @your_telegram
 - 1–2 конкретных совпадения из описания вакансии.
 - Без markdown, без "С уважением", без имени в подписи.
 - Заверши строкой "Telegram: @your_telegram".
-- Проверь длину: 300–400 символов.
 
 Верни ТОЛЬКО JSON в формате:
 {"letters": [{"vacancyId": "id", "coverLetter": "текст"}, ...]}
@@ -146,12 +146,12 @@ ${description}`;
 // Генерирует сопроводительные пачками по batchSize вакансий за один запрос.
 // items: [{ vacancy, matchedSkills }]. Возвращает Map<vacancyId, text>.
 // onBatch(partialResult) — вызывается после каждой пачки с накопленным результатом.
-async function buildCoverLettersBatch(resume, items, batchSize = 1, onBatch = null) {
+async function buildCoverLettersBatch(resume, items, batchSize = 10, onBatch = null) {
   const client = getClient();
   const result = new Map();
   if (!client || !items.length) return result;
 
-  const model = process.env.CLAUDE_MODEL || 'gpt-4o';
+  const model = process.env.CLAUDE_MODEL;
   const profile = process.env.APPLICANT_PROFILE || 'опытный разработчик';
   const resumeBlock = buildResumeBlock(resume);
 
@@ -170,7 +170,7 @@ async function buildCoverLettersBatch(resume, items, batchSize = 1, onBatch = nu
   }
 
   let nextBatchIdx = 0;
-  const CONCURRENCY = 3;
+  const CONCURRENCY = 10;
 
   async function runBatch(ii) {
     const { idx, batch, text } = batchTexts[ii];
@@ -187,7 +187,7 @@ async function buildCoverLettersBatch(resume, items, batchSize = 1, onBatch = nu
     try {
       const resp = await retryOnTransient(() => client.chat.completions.create({
         model,
-        max_tokens: 4000,
+        max_tokens: 20000,
         messages,
       }));
 
