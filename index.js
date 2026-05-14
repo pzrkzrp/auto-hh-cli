@@ -7,16 +7,25 @@ const path = require('path');
 const HHClient = require('./src/hh-client');
 const { loadConfig } = require('./src/config');
 const history = require('./src/history');
+const collectCache = require('./src/collect-cache');
 const { vacancyMatchesFilter } = require('./src/filter');
 const { buildCoverLetter, buildCoverLettersBatch } = require('./src/cover-letter');
 const { loadResume } = require('./src/resume');
 const { judgeVacancy, judgeVacanciesBatch } = require('./src/judge');
 const log = require('./src/logger');
 
-async function collectVacancies(client, search) {
+async function collectVacancies(client, search, cache) {
   const results = [];
+  const startPage = search.start_page || 0;
   const maxPages = search.max_pages || 1;
-  for (let page = 0; page < maxPages; page++) {
+  for (let page = startPage; page < startPage + maxPages; page++) {
+    const cached = cache.pages[String(page)];
+    if (cached) {
+      log.info(`Page ${page}: ${cached.length} vacancies (cached)`);
+      results.push(...cached);
+      continue;
+    }
+
     const params = {
       text: search.text,
       area: search.area,
@@ -32,6 +41,8 @@ async function collectVacancies(client, search) {
 
     const data = await client.searchVacancies(params);
     log.info(`Page ${page}: ${data.items.length} vacancies (total ${data.found})`);
+    cache.pages[String(page)] = data.items;
+    collectCache.save(cache);
     results.push(...data.items);
     if (page + 1 >= (data.pages || 0)) break;
   }
@@ -49,18 +60,8 @@ function fmtSalary(s) {
 function writeDigest(entries) {
   const dir = path.join(__dirname, 'data');
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  const file = path.join(dir, `digest-${new Date().toISOString().slice(0, 10)}.md`);
-  const md = entries.map(e => (
-    `## ${e.title} — ${e.employer}\n` +
-    `- Регион: ${e.area}\n` +
-    `- Зарплата: ${e.salary}\n` +
-    `- Скор Claude: ${e.score ?? '—'}/10\n` +
-    `- Совпавшие навыки: ${e.matchedSkills.join(', ') || '—'}\n` +
-    `- Вердикт: ${e.reason || '—'}\n` +
-    `- Ссылка: ${e.url}\n\n` +
-    `**Сопроводительное:**\n\n${e.coverLetter}\n\n---\n`
-  )).join('\n');
-  fs.writeFileSync(file, md);
+  const file = path.join(dir, `digest-${new Date().toISOString().slice(0, 10)}.json`);
+  fs.writeFileSync(file, JSON.stringify(entries, null, 2));
   return file;
 }
 
@@ -68,17 +69,8 @@ function writeRejected(entries) {
   if (!entries.length) return null;
   const dir = path.join(__dirname, 'data');
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  const file = path.join(dir, `rejected-${new Date().toISOString().slice(0, 10)}.md`);
-  const md = entries.map(e => (
-    `## ${e.title} — ${e.employer}\n` +
-    `- Регион: ${e.area}\n` +
-    `- Зарплата: ${e.salary}\n` +
-    `- Скор Claude: ${e.score ?? '—'}/10\n` +
-    `- Red flags: ${e.redFlags?.join('; ') || '—'}\n` +
-    `- Вердикт: ${e.reason || '—'}\n` +
-    `- Ссылка: ${e.url}\n\n---\n`
-  )).join('\n');
-  fs.writeFileSync(file, md);
+  const file = path.join(dir, `rejected-${new Date().toISOString().slice(0, 10)}.json`);
+  fs.writeFileSync(file, JSON.stringify(entries, null, 2));
   return file;
 }
 
@@ -90,8 +82,11 @@ function resetData() {
     fs.unlinkSync(historyFile);
     log.info(`Removed ${historyFile}`);
   }
+  for (const p of collectCache.clear()) {
+    log.info(`Removed ${p}`);
+  }
   for (const name of fs.readdirSync(dir)) {
-    if (/^(digest|rejected)-.*\.md$/.test(name)) {
+    if (/^(digest|rejected)-.*\.json$/.test(name)) {
       const p = path.join(dir, name);
       fs.unlinkSync(p);
       log.info(`Removed ${p}`);
@@ -111,32 +106,37 @@ async function main() {
   const minScore = cfg.apply.minClaudeScore ?? 7;
 
   try {
-  if (resume) {
-    log.info(`Resume loaded: ${resume.filename} (${resume.type})`);
-  } else {
-    log.warn('RESUME_PATH not set — Claude judge disabled, fall back to local filter only');
-  }
+    if (resume) {
+      log.info(`Resume loaded: ${resume.filename} (${resume.type})`);
+    } else {
+      log.warn('RESUME_PATH not set — Claude ju/dge disabled, fall back to local filter only');
+    }
 
   log.info('Searching vacancies', cfg.search);
-  const items = await collectVacancies(client, cfg.search);
+  const cache = collectCache.load();
+  const items = await collectVacancies(client, cfg.search, cache);
 
   // Этап 1: локальный фильтр — собираем кандидатов для Claude.
   const candidates = [];
   for (const item of items) {
     if (history.isSeen(item.id)) continue;
 
-    let full;
-    try {
-      full = await client.getVacancy(item.id);
-    } catch (err) {
-      log.warn(`Failed to fetch vacancy ${item.id}: ${err.message}`);
-      history.markSeen(item.id);
-      continue;
-    }
+    let full = cache.fullById[String(item.id)];
     if (!full) {
-      log.warn(`Empty vacancy ${item.id}, skipping`);
-      history.markSeen(item.id);
-      continue;
+      try {
+        full = await client.getVacancy(item.id);
+      } catch (err) {
+        log.warn(`Failed to fetch vacancy ${item.id}: ${err.message}`);
+        history.markSeen(item.id);
+        continue;
+      }
+      if (!full) {
+        log.warn(`Empty vacancy ${item.id}, skipping`);
+        history.markSeen(item.id);
+        continue;
+      }
+      cache.fullById[String(item.id)] = full;
+      collectCache.save(cache);
     }
 
     const verdict = vacancyMatchesFilter(full, cfg.filter);
@@ -155,22 +155,35 @@ async function main() {
   const useClaude = resume && process.env.ANTHROPIC_API_KEY;
   const batchSize = parseInt(process.env.JUDGE_BATCH_SIZE || '10', 10);
   const judgements = new Map();
+  for (const [id, j] of Object.entries(cache.judgements)) judgements.set(id, j);
   let judgedCount = 0;
 
   if (useClaude && candidates.length) {
-    for (let i = 0; i < candidates.length; i += batchSize) {
-      const batch = candidates.slice(i, i + batchSize).map(c => c.full);
+    const pending = candidates.filter(c => !judgements.has(String(c.full.id)));
+    if (pending.length < candidates.length) {
+      log.info(`Judgements from cache: ${candidates.length - pending.length}/${candidates.length}`);
+    }
+    for (let i = 0; i < pending.length; i += batchSize) {
+      const batch = pending.slice(i, i + batchSize).map(c => c.full);
       log.info(`Judging batch ${i / batchSize + 1}: ${batch.length} vacancies`);
       const result = await judgeVacanciesBatch(resume, batch, { minScore });
       if (!result) {
         log.warn(`Batch failed, falling back to per-item judge`);
         for (const v of batch) {
           const j = await judgeVacancy(resume, v, { minScore });
-          if (j) judgements.set(String(v.id), j);
+          if (j) {
+            judgements.set(String(v.id), j);
+            cache.judgements[String(v.id)] = j;
+            collectCache.save(cache);
+          }
           judgedCount++;
         }
       } else {
-        for (const [id, j] of result.entries()) judgements.set(id, j);
+        for (const [id, j] of result.entries()) {
+          judgements.set(id, j);
+          cache.judgements[id] = j;
+        }
+        collectCache.save(cache);
         judgedCount += batch.length;
       }
     }
@@ -217,13 +230,28 @@ async function main() {
   // Этап 4: сопроводительные пачками по 20.
   const coverBatchSize = parseInt(process.env.COVER_BATCH_SIZE || '20', 10);
   let coverMap = new Map();
+  for (const [id, letter] of Object.entries(cache.coverLetters)) coverMap.set(id, letter);
   if (useClaude && accepted.length) {
-    log.info(`Generating cover letters in batches of ${coverBatchSize} for ${accepted.length} vacancies`);
-    coverMap = await buildCoverLettersBatch(
-      resume,
-      accepted.map(a => ({ vacancy: a.full, matchedSkills: a.verdict.matchedSkills })),
-      coverBatchSize,
-    );
+    const pending = accepted.filter(a => !coverMap.has(String(a.full.id)));
+    if (pending.length < accepted.length) {
+      log.info(`Cover letters from cache: ${accepted.length - pending.length}/${accepted.length}`);
+    }
+    if (pending.length) {
+      log.info(`Generating cover letters in batches of ${coverBatchSize} for ${pending.length} vacancies`);
+      const generated = await buildCoverLettersBatch(
+        resume,
+        pending.map(a => ({ vacancy: a.full, matchedSkills: a.verdict.matchedSkills })),
+        coverBatchSize,
+        (partial) => {
+          for (const [id, letter] of partial.entries()) {
+            coverMap.set(id, letter);
+            cache.coverLetters[id] = letter;
+          }
+          collectCache.save(cache);
+        },
+      );
+      for (const [id, letter] of generated.entries()) coverMap.set(id, letter);
+    }
   }
 
   const matched = [];
@@ -232,6 +260,10 @@ async function main() {
     let coverLetter = coverMap.get(String(full.id));
     if (!coverLetter) {
       coverLetter = await buildCoverLetter(cfg.apply.coverLetterTemplate, full, verdict.matchedSkills);
+      if (coverLetter) {
+        cache.coverLetters[String(full.id)] = coverLetter;
+        collectCache.save(cache);
+      }
     }
 
     matched.push({
