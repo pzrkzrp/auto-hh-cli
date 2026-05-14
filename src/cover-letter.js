@@ -1,17 +1,29 @@
 // Генерация сопроводительного письма.
-// Если задан ANTHROPIC_API_KEY — Claude пишет персональное письмо
-// на основе описания вакансии и профиля соискателя из .env.
-// Иначе — fallback на шаблон из config.json с плейсхолдерами:
+// Использует OpenAI-совместимый API (OpenAI, Deepseek и т.п.).
+// Если API-ключ не задан — fallback на шаблон из config.json с плейсхолдерами:
 //   {title}, {employer}, {matchedSkills}, {area}.
+const OpenAI = require('openai');
 const log = require('./logger');
+const { retryOnTransient } = require('./retry');
+const { loadConfig } = require('./config');
+const { stripHtml, parseJSON } = require('./claude');
 
-let anthropic = null;
+const apiConfig = loadConfig().api || {};
+
 function getClient() {
-  if (anthropic) return anthropic;
-  if (!process.env.ANTHROPIC_API_KEY) return null;
-  const Anthropic = require('@anthropic-ai/sdk');
-  anthropic = new Anthropic.default ? new Anthropic.default() : new Anthropic();
-  return anthropic;
+  const key = apiConfig.apiKey || process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY;
+  if (!key) return null;
+  const opts = { apiKey: key, maxRetries: 3 };
+  if (apiConfig.baseUrl) opts.baseURL = apiConfig.baseUrl;
+  return new OpenAI(opts);
+}
+
+function buildResumeBlock(resume) {
+  if (!resume) return null;
+  if (resume.type === 'pdf') {
+    return { type: 'text', text: `=== РЕЗЮМЕ СОИСКАТЕЛЯ (PDF) ===\n${resume.filename}` };
+  }
+  return { type: 'text', text: `=== РЕЗЮМЕ СОИСКАТЕЛЯ ===\n${resume.text}` };
 }
 
 function buildFromTemplate(template, vacancy, matchedSkills) {
@@ -26,17 +38,12 @@ function buildFromTemplate(template, vacancy, matchedSkills) {
   return template.replace(/\{(\w+)\}/g, (_, k) => ctx[k] ?? '');
 }
 
-// Чистим html-разметку из vacancy.description.
-function stripHtml(s) {
-  return (s || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
 async function buildWithClaude(vacancy, matchedSkills) {
   const client = getClient();
   if (!client) return null;
 
   const profile = process.env.APPLICANT_PROFILE || 'опытный разработчик';
-  const model = process.env.CLAUDE_MODEL || 'claude-opus-4-7';
+  const model = process.env.CLAUDE_MODEL || 'gpt-4o';
 
   const description = stripHtml(vacancy.description).slice(0, 4000);
   const skills = (vacancy.key_skills || []).map(s => s.name).join(', ');
@@ -50,39 +57,40 @@ async function buildWithClaude(vacancy, matchedSkills) {
 Описание:
 ${description}
 
-Напиши сопроводительное письмо от моего имени, 5–7 предложений. Ориентируйся на этот образец по тону и ритму:
+Напиши короткое сопроводительное письмо от моего имени в официально-деловом стиле. ЖЁСТКОЕ ограничение: **300–400 символов включая пробелы и подпись с Telegram**. 2–4 предложения.
 
+Образец:
 """
-Увидел вашу вакансию — стек прям полностью совпадает, решил написать. Я фуллстек, последние пару лет пишу на React + NestJS. С SQL и ORM (чаще TypeORM и Prisma) работаю каждый день, Next.js тоже трогал, пару проектов с SSR было. Задачи знакомые: архитектуру обсуждал, приложения с нуля заводил, легаси подшаманивал. Удалёнка по Мск идеально, я живу в этом же часовом поясе. Можем созвониться, расскажу подробнее.
+Здравствуйте! Заинтересовала ваша вакансия — профиль полностью совпадает с моим опытом. Последние несколько лет работаю с React и NestJS, уверенно владею SQL/ORM, есть опыт с Next.js и SSR. Буду рад обсудить детали на созвоне.
+Telegram: @your_telegram
 """
 
 Правила:
-- Живой разговорный тон, как будто человек быстро набрал в чат. Короткие фразы, тире, скобки — ок.
-- Лёгкая неформальность: "трогал", "подшаманивал", "прям", "идеально" — такие словечки допустимы и желательны.
-- Без канцелярита и шаблонов ("рассмотрите мою кандидатуру", "готов внести вклад", "имею опыт", "считаю себя", "мои сильные стороны").
-- Не прилизывай — пусть читается как живое сообщение, а не сочинение.
-- Первая фраза — крюк за конкретику вакансии ("увидел...", "наткнулся на...", "стек совпадает...").
-- Упомяни 1–2 конкретных совпадения из описания.
-- Без markdown, без подписи "С уважением".
-- Начни с "Привет!" или "Здравствуйте!" (можно и без приветствия, как в образце).
-- Заверши строкой "Telegram: @your_telegram".`;
+- Официально-деловой, нейтрально-вежливый тон. Полные предложения, грамотный русский.
+- Никакой разговорности, сленга, сокращений ("прям", "трогал", "подшаманивал" и т.п.).
+- Избегай канцеляритных штампов ("рассмотрите мою кандидатуру", "готов внести вклад в развитие"): пиши по делу, но корректно.
+- Начни с "Здравствуйте!".
+- 1–2 конкретных совпадения из описания вакансии.
+- Без markdown, без "С уважением", без имени в подписи.
+- Заверши строкой "Telegram: @your_telegram".
+- Не упоминай зарплату, вилку, ожидания по доходу — ни конкретных цифр, ни общих формулировок ("по рынку", "обсуждаемо" и т.п.).
+- Проверь длину: 300–400 символов.`;
 
   try {
-    const resp = await client.messages.create({
+    const resp = await retryOnTransient(() => client.chat.completions.create({
       model,
-      max_tokens: 800,
-      system: [
+      max_tokens: 4000,
+      messages: [
         {
-          type: 'text',
-          text: `Ты помогаешь соискателю писать сопроводительные письма для откликов на hh.ru. Профиль соискателя: ${profile}\n\nПиши лаконично, по-человечески, без канцелярита. Цель — убедить рекрутера открыть резюме.`,
-          cache_control: { type: 'ephemeral' },
+          role: 'system',
+          content: `Ты помогаешь соискателю писать сопроводительные письма для откликов на hh.ru. Профиль соискателя: ${profile}\n\nПиши лаконично, по-человечески, без канцелярита. Цель — убедить рекрутера открыть резюме.`,
         },
+        { role: 'user', content: userMsg },
       ],
-      messages: [{ role: 'user', content: userMsg }],
-    });
-    const text = resp.content.find(b => b.type === 'text')?.text?.trim();
+    }));
+    const text = resp.choices?.[0]?.message?.content?.trim();
     if (text) {
-      log.debug(`Claude usage: in=${resp.usage.input_tokens} out=${resp.usage.output_tokens} cache_read=${resp.usage.cache_read_input_tokens || 0}`);
+      log.debug(`Claude usage: in=${resp.usage?.prompt_tokens} out=${resp.usage?.completion_tokens}`);
     }
     return text || null;
   } catch (err) {
@@ -97,47 +105,10 @@ async function buildCoverLetter(template, vacancy, matchedSkills) {
   return buildFromTemplate(template, vacancy, matchedSkills);
 }
 
-const BATCH_LETTERS_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    letters: {
-      type: 'array',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          vacancyId: { type: 'string' },
-          coverLetter: { type: 'string' },
-        },
-        required: ['vacancyId', 'coverLetter'],
-      },
-    },
-  },
-  required: ['letters'],
-};
-
-function buildResumeBlock(resume) {
-  if (!resume) return null;
-  if (resume.type === 'pdf') {
-    return {
-      type: 'document',
-      source: { type: 'base64', media_type: 'application/pdf', data: resume.data },
-      title: resume.filename,
-      cache_control: { type: 'ephemeral' },
-    };
-  }
-  return {
-    type: 'text',
-    text: `=== РЕЗЮМЕ СОИСКАТЕЛЯ ===\n${resume.text}`,
-    cache_control: { type: 'ephemeral' },
-  };
-}
-
 function formatVacancyShort(vacancy, matchedSkills) {
   const description = stripHtml(vacancy.description).slice(0, 3000);
   const skills = (vacancy.key_skills || []).map(s => s.name).join(', ');
-  return `id: ${vacancy.id}
+  return `vacancyId: ${vacancy.id}
 Название: ${vacancy.name}
 Компания: ${vacancy.employer?.name || '—'}
 Регион: ${vacancy.area?.name || '—'}
@@ -150,35 +121,38 @@ ${description}`;
 
 // Генерирует сопроводительные пачками по batchSize вакансий за один запрос.
 // items: [{ vacancy, matchedSkills }]. Возвращает Map<vacancyId, text>.
-async function buildCoverLettersBatch(resume, items, batchSize = 20) {
+// onBatch(partialResult) — вызывается после каждой пачки с накопленным результатом.
+async function buildCoverLettersBatch(resume, items, batchSize = 1, onBatch = null) {
   const client = getClient();
   const result = new Map();
   if (!client || !items.length) return result;
 
-  const model = process.env.CLAUDE_MODEL || 'claude-opus-4-7';
+  const model = process.env.CLAUDE_MODEL || 'gpt-4o';
   const profile = process.env.APPLICANT_PROFILE || 'опытный разработчик';
   const resumeBlock = buildResumeBlock(resume);
 
   const systemText = `Ты помогаешь соискателю писать сопроводительные письма для откликов на hh.ru. Профиль соискателя: ${profile}
 
-Для каждой поданной вакансии напиши сопроводительное от первого лица, 5–7 предложений. Ориентируйся на этот образец по тону и ритму:
+Для каждой вакансии напиши короткое сопроводительное от первого лица в официально-деловом стиле. ЖЁСТКОЕ ограничение: **300–400 символов включая пробелы и подпись с Telegram**. 2–4 предложения.
 
+Образец:
 """
-Увидел вашу вакансию — стек прям полностью совпадает, решил написать. Я фуллстек, последние пару лет пишу на React + NestJS. С SQL и ORM (чаще TypeORM и Prisma) работаю каждый день, Next.js тоже трогал, пару проектов с SSR было. Задачи знакомые: архитектуру обсуждал, приложения с нуля заводил, легаси подшаманивал. Удалёнка по Мск идеально, я живу в этом же часовом поясе. Можем созвониться, расскажу подробнее.
+Здравствуйте! Заинтересовала ваша вакансия — профиль полностью совпадает с моим опытом. Последние несколько лет работаю с React и NestJS, уверенно владею SQL/ORM, есть опыт с Next.js и SSR. Буду рад обсудить детали на созвоне.
+Telegram: @your_telegram
 """
 
 Правила:
-- Живой разговорный тон, как будто человек быстро набрал в чат. Короткие фразы, тире, скобки — ок.
-- Лёгкая неформальность: "трогал", "подшаманивал", "прям", "идеально" — такие словечки допустимы и желательны.
-- Без канцелярита и шаблонов ("рассмотрите мою кандидатуру", "готов внести вклад", "имею опыт", "считаю себя", "мои сильные стороны").
-- Не прилизывай идеально — пусть читается как живое сообщение, а не через нейронку.
-- Первая фраза — крюк за конкретику вакансии ("увидел...", "наткнулся на...", "стек совпадает...").
-- Упомяни 1–2 конкретных совпадения из описания/резюме.
-- Без markdown, без подписи "С уважением".
-- Можно с "Привет!" / "Здравствуйте!" или сразу к делу, как в образце.
+- Официально-деловой, нейтрально-вежливый тон. Полные предложения, грамотный русский. Без разговорности и сленга.
+- Избегай канцеляритных штампов ("рассмотрите мою кандидатуру", "готов внести вклад в развитие"): по делу, но корректно.
+- Начни с "Здравствуйте!".
+- 1–2 конкретных совпадения из описания вакансии.
+- Без markdown, без "С уважением", без имени в подписи.
 - Заверши строкой "Telegram: @your_telegram".
+- Проверь длину: 300–400 символов.
 
-Верни массив letters с полем vacancyId для каждой вакансии в том же порядке.`;
+Верни ТОЛЬКО JSON в формате:
+{"letters": [{"vacancyId": "id", "coverLetter": "текст"}, ...]}
+Никаких пояснений, никакого markdown, только JSON.`;
 
   for (let i = 0; i < items.length; i += batchSize) {
     const batch = items.slice(i, i + batchSize);
@@ -187,32 +161,35 @@ async function buildCoverLettersBatch(resume, items, batchSize = 20) {
     ).join('\n\n');
 
     try {
-      const resp = await client.messages.create({
+      const resp = await retryOnTransient(() => client.chat.completions.create({
         model,
-        max_tokens: Math.min(16000, 400 * batch.length + 500),
-        system: [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }],
-        messages: [{
-          role: 'user',
-          content: [
-            ...(resumeBlock ? [resumeBlock] : []),
-            { type: 'text', text },
-          ],
-        }],
-        output_config: {
-          format: { type: 'json_schema', schema: BATCH_LETTERS_SCHEMA },
-        },
-      });
+        max_tokens: 16000,
+        messages: [
+          { role: 'system', content: systemText },
+          {
+            role: 'user',
+            content: [
+              ...(resumeBlock ? [resumeBlock] : []),
+              { type: 'text', text },
+            ],
+          },
+        ],
+      }));
 
-      const block = resp.content.find(b => b.type === 'text');
-      if (!block) {
+      const content = resp.choices?.[0]?.message?.content;
+      console.log(content)
+      if (!content) {
         log.warn(`cover batch ${i / batchSize + 1}: empty response`);
         continue;
       }
-      const parsed = JSON.parse(block.text);
+      const parsed = parseJSON(content);
       for (const l of parsed.letters || []) {
         if (l.vacancyId && l.coverLetter) result.set(String(l.vacancyId), l.coverLetter);
       }
-      log.debug(`cover batch ${i / batchSize + 1}: ${batch.length} letters, cache_read=${resp.usage.cache_read_input_tokens || 0} in=${resp.usage.input_tokens || 0} out=${resp.usage.output_tokens || 0}`);
+      log.debug(`cover batch ${i / batchSize + 1}: ${batch.length} letters, in=${resp.usage?.prompt_tokens || 0} out=${resp.usage?.completion_tokens || 0}`);
+      if (onBatch) {
+        try { await onBatch(result); } catch (e) { log.warn(`cover onBatch callback failed: ${e.message}`); }
+      }
     } catch (err) {
       log.warn(`cover batch failed (${batch.length} items): ${err.message}`);
     }

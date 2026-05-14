@@ -135,16 +135,18 @@ cp .env.example .env
 ├─ config.json
 ├─ .env
 └─ src/
-   ├─ hh-client.js                # axios-клиент публичного API
-   ├─ apply-playwright.js         # логин и автоотклик через Playwright
+   ├─ hh-client.js                # браузерный скрейпинг hh.ru (Playwright)
    ├─ filter.js                   # локальный пре-фильтр
    ├─ judge.js                    # Claude-судья (одиночный + батч)
    ├─ cover-letter.js             # генерация писем Claude'ом
+   ├─ claude.js                   # общие утилиты для Claude API
+   ├─ digest.js                   # запись дайджеста и rejected в JSON
    ├─ resume.js                   # загрузка резюме
-   ├─ collect-cache.js            # кэш собранных вакансий за дату
+   ├─ cache.js                    # кэш собранных вакансий за дату
    ├─ history.js
    ├─ config.js
-   └─ logger.js
+   ├─ logger.js
+   └─ retry.js                    # повтор при rate limit / 5xx
 ```
 
 ## Замечания

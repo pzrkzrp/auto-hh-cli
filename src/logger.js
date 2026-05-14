@@ -11,7 +11,8 @@ function ensureDir() {
 
 function write(level, msg, meta) {
   ensureDir();
-  const line = `[${new Date().toISOString()}] [${level}] ${msg}` +
+  const ts = new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow', hour12: false }).replace(',', '');
+  const line = `[${ts}] [${level}] ${msg}` +
     (meta ? ' ' + JSON.stringify(meta) : '');
   console.log(line);
   fs.appendFileSync(LOG_FILE, line + '\n');

@@ -159,7 +159,13 @@ class HHClient {
   async searchVacancies(params) {
     const sp = new URLSearchParams();
     if (params.text) sp.set('text', params.text);
-    if (params.area != null) sp.set('area', String(params.area));
+    if (params.area != null) {
+      if (Array.isArray(params.area)) {
+        for (const id of params.area) sp.append('area', String(id));
+      } else {
+        sp.set('area', String(params.area));
+      }
+    }
     if (params.experience) sp.set('experience', params.experience);
     if (params.salary) sp.set('salary', String(params.salary));
     if (params.only_with_salary) sp.set('only_with_salary', 'true');

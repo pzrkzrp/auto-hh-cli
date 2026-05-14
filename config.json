@@ -1,18 +1,23 @@
 {
   "search": {
     "text": "React OR angular OR node.js OR nest.js",
-    "area": null,
+    "area": [1, 2],
     "only_with_salary": false,
-    "per_page": 20,
-    "max_pages": 1,
+    "per_page": 50,
+    "start_page": 11,
+    "max_pages": 10,
     "schedule": null,
     "employment": null
   },
   "filter": {
     "requiredSkills": [],
-    "excludedKeywords": ["стажёр", "junior"],
-    "excludedCompanies": ["Яндекс", "Сбер", "Сбербанк"],
+    "excludedKeywords": ["стажёр", "junior", "React Native"],
+    "excludedCompanies": ["Яндекс", "Сбер"],
     "excludeArchived": true
+  },
+  "api": {
+    "baseUrl": "https://api.deepseek.com",
+    "apiKey": ""
   },
   "apply": {
     "maxPerRun": 30,

@@ -1,86 +1,55 @@
-// Claude-судья: получает резюме + описание вакансии,
-// решает стоит ли откликаться и сразу пишет персональное сопроводительное.
-//
-// Возвращает: { fit: boolean, score: 1..10, reason, redFlags, coverLetter? }
-// Резюме отправляется один раз, кешируется (cache_control) — на каждой
-// следующей вакансии оплачивается только дешёвое чтение кеша.
 const log = require('./logger');
+const { retryOnTransient } = require('./retry');
+const { loadConfig } = require('./config');
+const { getClient, stripHtml, parseJSON, buildResumeBlock } = require('./claude');
 
-let client = null;
-function getClient() {
-  if (client) return client;
-  if (!process.env.ANTHROPIC_API_KEY) return null;
-  const Anthropic = require('@anthropic-ai/sdk');
-  client = Anthropic.default ? new Anthropic.default() : new Anthropic();
-  return client;
-}
+const apiConfig = loadConfig().api || {};
 
-function stripHtml(s) {
-  return (s || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
-// Резюме как кешируемый блок. PDF идёт документом, текст — текстом.
-function buildResumeBlock(resume) {
-  if (!resume) return null;
-  if (resume.type === 'pdf') {
-    return {
-      type: 'document',
-      source: { type: 'base64', media_type: 'application/pdf', data: resume.data },
-      title: resume.filename,
-      cache_control: { type: 'ephemeral' },
-    };
-  }
-  return {
-    type: 'text',
-    text: `=== РЕЗЮМЕ СОИСКАТЕЛЯ ===\n${resume.text}`,
-    cache_control: { type: 'ephemeral' },
-  };
-}
-
-const JUDGE_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    fit: { type: 'boolean', description: 'Стоит ли откликаться' },
-    score: { type: 'integer', description: 'Соответствие резюме вакансии, 1..10' },
-    reason: { type: 'string', description: '1-2 предложения почему' },
-    redFlags: {
-      type: 'array',
-      items: { type: 'string' },
-      description: 'Несоответствия: стек, опыт, локация, ЗП и т.п.',
-    },
-    coverLetter: {
-      type: 'string',
-      description: 'Если fit=true — короткое сопроводительное (4-6 предложений) от первого лица. Иначе пустая строка.',
-    },
-  },
-  required: ['fit', 'score', 'reason', 'redFlags', 'coverLetter'],
-};
-
-const BATCH_JUDGE_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    verdicts: {
-      type: 'array',
-      description: 'По одной записи на каждую вакансию в том же порядке, что во входе.',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          vacancyId: { type: 'string', description: 'id вакансии из входа' },
-          fit: { type: 'boolean' },
-          score: { type: 'integer' },
-          reason: { type: 'string' },
-          redFlags: { type: 'array', items: { type: 'string' } },
-          coverLetter: { type: 'string' },
-        },
-        required: ['vacancyId', 'fit', 'score', 'reason', 'redFlags', 'coverLetter'],
-      },
-    },
-  },
-  required: ['verdicts'],
-};
+// const JUDGE_SCHEMA = {
+//   type: 'object',
+//   additionalProperties: false,
+//   properties: {
+//     vacancyId: { type: 'string', description: 'id вакансии' },
+//     fit: { type: 'boolean', description: 'Стоит ли откликаться' },
+//     score: { type: 'integer', description: 'Соответствие резюме вакансии, 1..10' },
+//     reason: { type: 'string', description: '1-2 предложения почему' },
+//     redFlags: {
+//       type: 'array',
+//       items: { type: 'string' },
+//       description: 'Несоответствия: стек, опыт, локация, ЗП и т.п.',
+//     },
+//     coverLetter: {
+//       type: 'string',
+//       description: 'Если fit=true — короткое сопроводительное (4-6 предложений) от первого лица. Иначе пустая строка.',
+//     },
+//   },
+//   required: ['vacancyId', 'fit', 'score', 'reason', 'redFlags', 'coverLetter'],
+// };
+//
+// const BATCH_JUDGE_SCHEMA = {
+//   type: 'object',
+//   additionalProperties: false,
+//   properties: {
+//     verdicts: {
+//       type: 'array',
+//       description: 'По одной записи на каждую вакансию в том же порядке, что во входе.',
+//       items: {
+//         type: 'object',
+//         additionalProperties: false,
+//         properties: {
+//           vacancyId: { type: 'string', description: 'id вакансии из входа' },
+//           fit: { type: 'boolean' },
+//           score: { type: 'integer' },
+//           reason: { type: 'string' },
+//           redFlags: { type: 'array', items: { type: 'string' } },
+//           coverLetter: { type: 'string' },
+//         },
+//         required: ['vacancyId', 'fit', 'score', 'reason', 'redFlags', 'coverLetter'],
+//       },
+//     },
+//   },
+//   required: ['verdicts'],
+// };
 
 function formatVacancyText(vacancy) {
   const description = stripHtml(vacancy.description).slice(0, 6000);
@@ -88,7 +57,7 @@ function formatVacancyText(vacancy) {
   const salary = vacancy.salary
     ? `${vacancy.salary.from || '?'}–${vacancy.salary.to || '?'} ${vacancy.salary.currency || ''}`
     : 'не указана';
-  return `id: ${vacancy.id}
+  return `vacancyId: ${vacancy.id}
 Название: ${vacancy.name}
 Компания: ${vacancy.employer?.name || '—'}
 Регион: ${vacancy.area?.name || '—'}
@@ -113,15 +82,19 @@ function buildSystemText(minScore) {
 
 score: 1-3 — не подходит, 4-6 — спорно, 7-8 — хороший матч, 9-10 — идеальный.
 Порог отклика: score >= ${minScore}. Если ниже — fit=false.
-
-coverLetter всегда оставляй пустой строкой "" — сопроводительные пишутся отдельным шагом.`;
+Если fit = false, добавь поле reason с причиной отказа.
+Если fit = true, добавь поле comment почему вакансия подходит.
+coverLetter всегда оставляй пустой строкой "" — сопроводительные пишутся отдельным шагом.
+vacancyId скопируй из поля id вакансии (оно первое в данных вакансии).ла
+Отвечай ТОЛЬКО JSON, строго соответствующий этой схеме.
+Никаких пояснений, никакого markdown, только один JSON-объект.`;
 }
 
 async function judgeVacancy(resume, vacancy, opts = {}) {
-  const c = getClient();
+  const c = getClient(apiConfig);
   if (!c) return null;
 
-  const model = process.env.CLAUDE_MODEL || 'claude-opus-4-7';
+  const model = process.env.CLAUDE_MODEL || 'gpt-4o';
   const minScore = opts.minScore ?? 7;
 
   const vacancyBlock = {
@@ -131,8 +104,8 @@ async function judgeVacancy(resume, vacancy, opts = {}) {
 
   const resumeBlock = buildResumeBlock(resume);
   const systemText = buildSystemText(minScore);
-
   const messages = [
+    { role: 'system', content: systemText },
     {
       role: 'user',
       content: [
@@ -141,23 +114,17 @@ async function judgeVacancy(resume, vacancy, opts = {}) {
       ],
     },
   ];
-
   try {
-    ages.create({
+    const resp = await retryOnTransient(() => c.chat.completions.create({
       model,
-      max_tokens: 1500,
-      system: [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }],
+      max_tokens: 8000,
       messages,
-      output_config: {
-        format: { type: 'json_schema', schema: JUDGE_SCHEMA },
-      },
-    });
-
-    const block = resp.content.find(b => b.type === 'text');
-    if (!block) return null;
-    const parsed = JSON.parse(block.text);
-
-    log.debug(`judge ${vacancy.id}: score=${parsed.score} fit=${parsed.fit} cache_read=${resp.usage.cache_read_input_tokens || 0}`);
+      response_format: { type: 'json_object' },
+    }));
+    const text = resp.choices?.[0]?.message?.content;
+    if (!text) return null;
+    const parsed = parseJSON(text);
+    log.debug(`judge ${vacancy.id}: score=${parsed.score} fit=${parsed.fit} in=${resp.usage?.prompt_tokens} out=${resp.usage?.completion_tokens}`);
     return parsed;
   } catch (err) {
     log.warn(`judge failed for ${vacancy.id}: ${err.message}`);
@@ -165,14 +132,14 @@ async function judgeVacancy(resume, vacancy, opts = {}) {
   }
 }
 
-// Батчевая версия: судит пачку вакансий за один запрос к Claude.
+// Батчевая версия: судит пачку вакансий за один запрос.
 // Возвращает Map<vacancyId, verdict> (verdict в том же формате, что judgeVacancy).
 async function judgeVacanciesBatch(resume, vacancies, opts = {}) {
-  const c = getClient();
+  const c = getClient(apiConfig);
   if (!c) return null;
   if (!vacancies.length) return new Map();
 
-  const model = process.env.CLAUDE_MODEL || 'claude-opus-4-7';
+  const model = process.env.CLAUDE_MODEL || 'gpt-4o';
   const minScore = opts.minScore ?? 7;
 
   const resumeBlock = buildResumeBlock(resume);
@@ -184,6 +151,7 @@ async function judgeVacanciesBatch(resume, vacancies, opts = {}) {
   ).join('\n\n');
 
   const messages = [
+    { role: 'system', content: systemText },
     {
       role: 'user',
       content: [
@@ -194,21 +162,19 @@ async function judgeVacanciesBatch(resume, vacancies, opts = {}) {
   ];
 
   try {
-    const resp = await c.messages.create({
+    const resp = await retryOnTransient(() => c.chat.completions.create({
       model,
-      max_tokens: Math.min(8000, 200 * vacancies.length + 500),
-      system: [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }],
+      max_tokens: 8000,
       messages,
-      output_config: {
-        format: { type: 'json_schema', schema: BATCH_JUDGE_SCHEMA },
-      },
-    });
+      response_format: { type: 'json_object' },
+    }));
+    console.log(resp)
+    const text = resp.choices?.[0]?.message?.content;
+    if (!text) return null;
+    const parsed = parseJSON(text);
+    console.dir({parsed}, {depth: null})
 
-    const block = resp.content.find(b => b.type === 'text');
-    if (!block) return null;
-    const parsed = JSON.parse(block.text);
-
-    log.debug(`judge batch ${vacancies.length}: cache_read=${resp.usage.cache_read_input_tokens || 0} in=${resp.usage.input_tokens || 0} out=${resp.usage.output_tokens || 0}`);
+    log.debug(`judge batch ${vacancies.length}: in=${resp.usage?.prompt_tokens || 0} out=${resp.usage?.completion_tokens || 0}`);
 
     const map = new Map();
     for (const verdict of parsed.verdicts || []) {

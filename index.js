@@ -7,11 +7,12 @@ const path = require('path');
 const HHClient = require('./src/hh-client');
 const { loadConfig } = require('./src/config');
 const history = require('./src/history');
-const collectCache = require('./src/collect-cache');
+const collectCache = require('./src/cache');
 const { vacancyMatchesFilter } = require('./src/filter');
 const { buildCoverLetter, buildCoverLettersBatch } = require('./src/cover-letter');
 const { loadResume } = require('./src/resume');
 const { judgeVacancy, judgeVacanciesBatch } = require('./src/judge');
+const { writeDigest, writeRejected } = require('./src/digest');
 const log = require('./src/logger');
 
 async function collectVacancies(client, search, cache) {
@@ -55,23 +56,6 @@ function fmtSalary(s) {
   if (s.from) parts.push(`от ${s.from}`);
   if (s.to) parts.push(`до ${s.to}`);
   return `${parts.join(' ') || '?'} ${s.currency || ''}`.trim();
-}
-
-function writeDigest(entries) {
-  const dir = path.join(__dirname, 'data');
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  const file = path.join(dir, `digest-${new Date().toISOString().slice(0, 10)}.json`);
-  fs.writeFileSync(file, JSON.stringify(entries, null, 2));
-  return file;
-}
-
-function writeRejected(entries) {
-  if (!entries.length) return null;
-  const dir = path.join(__dirname, 'data');
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  const file = path.join(dir, `rejected-${new Date().toISOString().slice(0, 10)}.json`);
-  fs.writeFileSync(file, JSON.stringify(entries, null, 2));
-  return file;
 }
 
 function resetData() {
@@ -119,10 +103,9 @@ async function main() {
   // Этап 1: локальный фильтр — собираем кандидатов для Claude.
   const candidates = [];
   for (const item of items) {
-    if (history.isSeen(item.id)) continue;
-
     let full = cache.fullById[String(item.id)];
     if (!full) {
+      if (history.isSeen(item.id)) continue;
       try {
         full = await client.getVacancy(item.id);
       } catch (err) {
@@ -152,7 +135,8 @@ async function main() {
   log.info(`Local filter passed: ${candidates.length}/${items.length}`);
 
   // Этап 2: Claude судит пачками.
-  const useClaude = resume && process.env.ANTHROPIC_API_KEY;
+  const hasApiKey = cfg.api?.apiKey || process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY;
+  const useClaude = resume && hasApiKey;
   const batchSize = parseInt(process.env.JUDGE_BATCH_SIZE || '10', 10);
   const judgements = new Map();
   for (const [id, j] of Object.entries(cache.judgements)) judgements.set(id, j);
@@ -163,12 +147,19 @@ async function main() {
     if (pending.length < candidates.length) {
       log.info(`Judgements from cache: ${candidates.length - pending.length}/${candidates.length}`);
     }
+    const batches = [];
     for (let i = 0; i < pending.length; i += batchSize) {
-      const batch = pending.slice(i, i + batchSize).map(c => c.full);
-      log.info(`Judging batch ${i / batchSize + 1}: ${batch.length} vacancies`);
+      batches.push(pending.slice(i, i + batchSize).map(c => c.full));
+    }
+
+    let nextBatchIdx = 0;
+    const CONCURRENCY = 1;
+
+    async function runBatch(idx, batch) {
+      log.info(`Judging batch ${idx}: ${batch.length} vacancies`);
       const result = await judgeVacanciesBatch(resume, batch, { minScore });
       if (!result) {
-        log.warn(`Batch failed, falling back to per-item judge`);
+        log.warn(`Batch ${idx} failed, falling back to per-item judge`);
         for (const v of batch) {
           const j = await judgeVacancy(resume, v, { minScore });
           if (j) {
@@ -187,6 +178,17 @@ async function main() {
         judgedCount += batch.length;
       }
     }
+
+    async function worker() {
+      while (nextBatchIdx < batches.length) {
+        const batch = batches[nextBatchIdx];
+        const num = nextBatchIdx + 1;
+        nextBatchIdx++;
+        await runBatch(num, batch);
+      }
+    }
+
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, batches.length) }, () => worker()));
   }
 
   // Этап 3: финальный отбор — без писем (письма пишутся пачкой ниже).

@@ -158,11 +158,19 @@ async function applyToVacancy(page, entry) {
     if (el) { await el.click().catch(() => {}); break; }
   }
 
-  const textareaSel = 'textarea[data-qa="vacancy-response-popup-form-letter-input"], textarea[name="text"]';
-  const textarea = await page.waitForSelector(textareaSel, { timeout: 5000 }).catch(() => null);
+  const textareaSel = 'textarea[data-qa="vacancy-response-popup-form-letter-input"], textarea[name="text"], textarea[data-qa*="letter"]';
+  const textarea = await page.waitForSelector(textareaSel, { timeout: 8000 }).catch(() => null);
   if (textarea && entry.coverLetter) {
     await textarea.fill(entry.coverLetter);
     log.info('Cover letter filled');
+  } else if (entry.coverLetter) {
+    const dumpPath = path.join(__dirname, '..', 'data', `apply-dom-${entry.id}.html`);
+    try {
+      const html = await page.content();
+      fs.writeFileSync(dumpPath, html);
+      log.warn(`Letter textarea NOT found. Dumped DOM to ${dumpPath}`);
+    } catch (_) {}
+    return { ok: false, reason: 'letter textarea not found — refusing to submit without cover letter' };
   }
 
   // Подтверждение отправки.
@@ -187,7 +195,15 @@ async function applyToVacancy(page, entry) {
 
 async function applyFlow() {
   ensureProfile();
-  const entries = loadLatestDigest();
+  let entries = loadLatestDigest();
+  const limitArg = process.argv.find(a => a.startsWith('--limit'));
+  if (limitArg) {
+    const n = parseInt(limitArg.includes('=') ? limitArg.split('=')[1] : process.argv[process.argv.indexOf(limitArg) + 1], 10);
+    if (Number.isFinite(n) && n > 0) {
+      entries = entries.slice(0, n);
+      log.info(`Limit applied: ${n} vacancies`);
+    }
+  }
   log.info(`${entries.length} vacancies in digest`);
 
   const ctx = await chromium.launchPersistentContext(PROFILE, {
