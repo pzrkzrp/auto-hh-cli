@@ -6,6 +6,7 @@ import cmdDigest from "./cmd-digest.js";
 import cmdHistory from "./cmd-history.js";
 import cmdConfig from "./cmd-config.js";
 import cmdReset from "./cmd-reset.js";
+import cmdCover from "./cmd-cover.js";
 
 const program = new Command();
 
@@ -51,5 +52,10 @@ program
   .command('reset')
   .description('Сбросить историю, кэш и дайджесты')
   .action(cmdReset);
+
+program
+  .command('cover <vacancyId>')
+  .description('Сгенерировать сопроводительное для вакансии по id')
+  .action(cmdCover);
 
 export default program;
