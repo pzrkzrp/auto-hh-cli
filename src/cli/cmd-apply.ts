@@ -32,7 +32,8 @@ function loadLatestDigest() {
 
   if (file.endsWith('.json')) {
     const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
-    return (data.matched || []).map(e => ({
+    const entries = Array.isArray(data) ? data : (data.matched || []);
+    return entries.map(e => ({
       id: String(e.id),
       url: e.url,
       coverLetter: e.coverLetter || '',
@@ -165,7 +166,7 @@ async function detectPostState(page) {
 }
 
 function waitForEnter(message) {
-  return new Promise((resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     process.stdout.write(`\n>>> ${message}\n>>> Нажмите ENTER в этой консоли, когда закончите...\n`);
     let timer;
     const onData = () => {
@@ -199,7 +200,7 @@ async function loginFlow() {
   await new Promise(() => {}); // бесконечное ожидание — браузер жив, пока не закроют.
 }
 
-async function apply(opts = {}) {
+async function apply(opts: Record<string, any> = {}) {
   if (opts.login) {
     await loginFlow();
     return;
@@ -230,7 +231,7 @@ async function apply(opts = {}) {
 
   let ok = 0, fail = 0;
   for (const entry of entries) {
-    const state = history.load();
+    const state = await history.load();
     if (state.applied[entry.id]?.via === 'playwright') {
       log.info(`Skip ${entry.id}: already applied via playwright`);
       continue;
@@ -238,7 +239,7 @@ async function apply(opts = {}) {
     try {
       const res = await applyToVacancy(page, entry);
       if (res.ok) {
-        history.markApplied(entry.id, { via: 'playwright', url: entry.url });
+        await history.markApplied(entry.id, { via: 'playwright', url: entry.url });
         ok++;
       } else {
         fail++;

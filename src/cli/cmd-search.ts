@@ -60,17 +60,17 @@ async function filterLocally(client, items, cache, cfg) {
   for (const item of items) {
     let full = cache.fullById[String(item.id)];
     if (!full) {
-      if (history.isSeen(item.id)) continue;
+      if (await history.isSeen(item.id)) continue;
       try {
         full = await client.getVacancy(item.id);
       } catch (err) {
         log.warn(`Failed to fetch vacancy ${item.id}: ${err.message}`);
-        history.markSeen(item.id);
+        await history.markSeen(item.id);
         continue;
       }
       if (!full) {
         log.warn(`Empty vacancy ${item.id}, skipping`);
-        history.markSeen(item.id);
+        await history.markSeen(item.id);
         continue;
       }
       cache.fullById[String(item.id)] = full;
@@ -78,7 +78,7 @@ async function filterLocally(client, items, cache, cfg) {
     }
 
     const verdict = vacancyMatchesFilter(full, cfg.filter);
-    history.markSeen(item.id);
+    await history.markSeen(item.id);
 
     if (!verdict.ok) {
       log.info(`Skip ${item.id} (${full.name}): ${verdict.reason}`);
@@ -241,7 +241,7 @@ async function buildResults(accepted, coverMap, cache, cfg) {
       reason,
       coverLetter,
     });
-    history.markApplied(full.id, {
+    await history.markApplied(full.id, {
       title: full.name,
       employer: full.employer?.name,
       url: full.alternate_url,
