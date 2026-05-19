@@ -7,6 +7,7 @@ import log from "./logger.js";
 import {  retryOnTransient  } from "./retry.js";
 import {  loadConfig  } from "./config.js";
 import {  stripHtml, parseJSON  } from "./claude.js";
+import {  adaptResumeForVacancy  } from "./adapt-resume.js";
 
 const apiConfig = loadConfig().api || {};
 
@@ -38,7 +39,7 @@ function buildFromTemplate(template, vacancy, matchedSkills) {
   return template.replace(/\{(\w+)\}/g, (_, k) => ctx[k] ?? '');
 }
 
-async function buildWithClaude(vacancy, matchedSkills) {
+async function buildWithClaude(vacancy, matchedSkills, resume = null, adaptResume = false) {
   const client = getClient();
   if (!client) return null;
 
@@ -48,7 +49,9 @@ async function buildWithClaude(vacancy, matchedSkills) {
   const description = stripHtml(vacancy.description).slice(0, 1000);
   const skills = (vacancy.key_skills || []).map(s => s.name).join(', ');
 
-  const userMsg = `Вакансия: ${vacancy.name}
+  const adaptedResume = adaptResume && resume ? adaptResumeForVacancy(resume, vacancy) : null;
+
+  const userMsg = `${adaptedResume ? `=== МОЁ РЕЗЮМЕ (релевантное) ===\n${adaptedResume}\n\n` : ''}Вакансия: ${vacancy.name}
 Компания: ${vacancy.employer?.name || '—'}
 Регион: ${vacancy.area?.name || '—'}
 Ключевые навыки: ${skills || '—'}
@@ -100,8 +103,10 @@ Telegram: @your_telegram
   }
 }
 
-async function buildCoverLetter(template, vacancy, matchedSkills) {
-  const claudeText = await buildWithClaude(vacancy, matchedSkills);
+async function buildCoverLetter(template, vacancy, matchedSkills, resume = null) {
+  const cfg = loadConfig();
+  const adaptResume = cfg.adaptResume !== false;
+  const claudeText = await buildWithClaude(vacancy, matchedSkills, resume, adaptResume);
   if (claudeText) return claudeText;
   return buildFromTemplate(template, vacancy, matchedSkills);
 }
@@ -153,9 +158,12 @@ async function buildCoverLettersBatch(resume, items, batchSize = 10, onBatch = n
 
   const model = process.env.CLAUDE_MODEL;
   const profile = process.env.APPLICANT_PROFILE || 'опытный разработчик';
-  const resumeBlock = buildResumeBlock(resume);
+  const cfg = loadConfig();
+  const adapt = cfg.adaptResume !== false;
+  const resumeBlock = !adapt ? buildResumeBlock(resume) : null;
 
-  const systemText = buildBatchSystemText(profile);
+  const systemText = buildBatchSystemText(profile) +
+    (adapt ? '\n\nДля каждой вакансии передано адаптированное под неё резюме — учитывай его при составлении письма, указывая релевантный опыт.' : '');
 
   const batchTexts = [];
   for (let i = 0; i < items.length; i += batchSize) {
@@ -163,9 +171,17 @@ async function buildCoverLettersBatch(resume, items, batchSize = 10, onBatch = n
     batchTexts.push({
       idx: batchTexts.length + 1,
       batch,
-      text: batch.map((it, idx) =>
-        `=== ВАКАНСИЯ #${idx + 1} ===\n${formatVacancyShort(it.vacancy, it.matchedSkills)}`
-      ).join('\n\n'),
+      text: batch.map((it, idx) => {
+        let block = '';
+        if (adapt) {
+          const adapted = adaptResumeForVacancy(resume, it.vacancy);
+          if (adapted) {
+            block += `=== РЕЗЮМЕ (релевантное для вакансии #${idx + 1}) ===\n${adapted}\n\n`;
+          }
+        }
+        block += `=== ВАКАНСИЯ #${idx + 1} ===\n${formatVacancyShort(it.vacancy, it.matchedSkills)}`;
+        return block;
+      }).join('\n\n'),
     });
   }
 

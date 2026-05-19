@@ -2,6 +2,7 @@ import log from "./logger.js";
 import {  retryOnTransient  } from "./retry.js";
 import {  loadConfig  } from "./config";
 import {  getClient, stripHtml, parseJSON, buildResumeBlock  } from "./claude.js";
+import {  adaptResumeForVacancy  } from "./adapt-resume.js";
 
 const apiConfig = loadConfig().api || {};
 
@@ -56,7 +57,8 @@ async function judgeVacancy(resume, vacancy, opts: Record<string, any> = {}) {
     text: `=== ВАКАНСИЯ ===\n${formatVacancyText(vacancy)}`,
   };
 
-  const resumeBlock = buildResumeBlock(resume);
+  const adaptedText = opts.adaptResume ? adaptResumeForVacancy(resume, vacancy) : null;
+  const resumeBlock = buildResumeBlock(resume, adaptedText);
   const systemText = buildSystemText(minScore);
   const messages = [
     { role: 'system', content: systemText },
@@ -93,16 +95,26 @@ async function judgeVacanciesBatch(resume, vacancies, opts: Record<string, any> 
   if (!c) return null;
   if (!vacancies.length) return new Map();
 
-  const model = process.env.CLAUDE_MODEL || 'gpt-4o';
+  const model = process.env.CLAUDE_MODEL;
   const minScore = opts.minScore ?? 7;
+  const adapt = opts.adaptResume;
 
-  const resumeBlock = buildResumeBlock(resume);
   const systemText = buildSystemText(minScore) +
-    `\n\nВ этом запросе подаётся СРАЗУ НЕСКОЛЬКО вакансий. Для каждой верни отдельную запись в массиве verdicts с полем vacancyId, в том же порядке, что во входе.`;
+    `\n\nВ этом запросе подаётся СРАЗУ НЕСКОЛЬКО вакансий. Для каждой верни отдельную запись в массиве verdicts с полем vacancyId, в том же порядке, что во входе.${adapt ? '\n\nДля каждой вакансии передано адаптированное под неё резюме — учитывай только его при оценке.' : ''}`;
 
-  const vacanciesText = vacancies.map((v, i) =>
-    `=== ВАКАНСИЯ #${i + 1} ===\n${formatVacancyText(v)}`
-  ).join('\n\n');
+  const vacanciesText = vacancies.map((v, i) => {
+    let block = '';
+    if (adapt) {
+      const adapted = adaptResumeForVacancy(resume, v);
+      if (adapted) {
+        block += `=== АДАПТИРОВАННОЕ РЕЗЮМЕ (вакансия #${i + 1}) ===\n${adapted}\n\n`;
+      }
+    }
+    block += `=== ВАКАНСИЯ #${i + 1} ===\n${formatVacancyText(v)}`;
+    return block;
+  }).join('\n\n');
+
+  const resumeBlock = !adapt ? buildResumeBlock(resume) : null;
 
   const messages = [
     { role: 'system', content: systemText },
@@ -122,11 +134,9 @@ async function judgeVacanciesBatch(resume, vacancies, opts: Record<string, any> 
       messages,
       response_format: { type: 'json_object' },
     }));
-    console.log(resp)
     const text = (resp as any).choices?.[0]?.message?.content;
     if (!text) return null;
     const parsed = parseJSON(text);
-    console.dir({parsed}, {depth: null})
 
     log.debug(`judge batch ${vacancies.length}: in=${(resp as any).usage?.prompt_tokens || 0} out=${(resp as any).usage?.completion_tokens || 0}`);
 

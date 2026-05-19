@@ -90,7 +90,7 @@ async function filterLocally(client, items, cache, cfg) {
   return candidates;
 }
 
-async function judgeWithClaude(resume, candidates, cache, minScore) {
+async function judgeWithClaude(resume, candidates, cache, minScore, adaptResume = false) {
   const judgements = new Map();
   for (const [id, j] of Object.entries(cache.judgements)) judgements.set(id, j);
   let judgedCount = 0;
@@ -107,15 +107,15 @@ async function judgeWithClaude(resume, candidates, cache, minScore) {
   }
 
   let nextBatchIdx = 0;
-  const CONCURRENCY = 1;
+  const CONCURRENCY = 10;
 
   async function runBatch(idx, batch) {
     log.info(`Judging batch ${idx}: ${batch.length} vacancies`);
-    const result = await judgeVacanciesBatch(resume, batch, { minScore });
+    const result = await judgeVacanciesBatch(resume, batch, { minScore, adaptResume });
     if (!result) {
       log.warn(`Batch ${idx} failed, falling back to per-item judge`);
       for (const v of batch) {
-        const j = await judgeVacancy(resume, v, { minScore });
+        const j = await judgeVacancy(resume, v, { minScore, adaptResume });
         if (j) {
           judgements.set(String(v.id), j);
           cache.judgements[String(v.id)] = j;
@@ -217,13 +217,13 @@ async function generateCoverLetters(resume, accepted, cache, dryRun) {
   return coverMap;
 }
 
-async function buildResults(accepted, coverMap, cache, cfg) {
+async function buildResults(accepted, coverMap, cache, cfg, resume = null) {
   const matched = [];
   for (const a of accepted) {
     const { full, verdict, score, reason } = a;
     let coverLetter = coverMap.get(String(full.id));
     if (!coverLetter) {
-      coverLetter = buildCoverLetter(cfg.apply.coverLetterTemplate, full, verdict.matchedSkills);
+      coverLetter = await buildCoverLetter(cfg.apply.coverLetterTemplate, full, verdict.matchedSkills, resume);
       if (coverLetter) {
         cache.coverLetters[String(full.id)] = coverLetter;
         await collectCache.saveCoverLetter(cache, full.id);
@@ -283,15 +283,16 @@ async function search(opts: Record<string, any> = {}) {
     const candidates = await filterLocally(client, items, cache, cfg);
     log.info(`Local filter passed: ${candidates.length}/${items.length}`);
 
+    const adaptResume = cfg.adaptResume !== false;
     const { judgements, judgedCount } = useClaude
-      ? await judgeWithClaude(resume, candidates, cache, minScore)
+      ? await judgeWithClaude(resume, candidates, cache, minScore, adaptResume)
       : { judgements: new Map(), judgedCount: 0 };
 
     const { accepted, rejected } = selectAccepted(candidates, judgements, useClaude, maxRun);
 
     const coverMap = await generateCoverLetters(resume, accepted, cache, dryRun);
 
-    const matched = await buildResults(accepted, coverMap, cache, cfg);
+    const matched = await buildResults(accepted, coverMap, cache, cfg, resume);
 
     log.info(`Judged by Claude: ${judgedCount}, accepted: ${matched.length}, rejected: ${rejected.length}`);
 

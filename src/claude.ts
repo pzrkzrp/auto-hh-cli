@@ -30,8 +30,11 @@ function parseJSON(text) {
   return JSON.parse(cleaned);
 }
 
-function buildResumeBlock(resume) {
+function buildResumeBlock(resume, adaptedText = null) {
   if (!resume) return null;
+  if (adaptedText) {
+    return { type: 'text', text: `=== РЕЗЮМЕ СОИСКАТЕЛЯ (адаптированное под вакансию) ===\n${adaptedText}` };
+  }
   if (resume.type === 'pdf') {
     return { type: 'text', text: `=== РЕЗЮМЕ СОИСКАТЕЛЯ (PDF) ===\n${resume.filename}` };
   }

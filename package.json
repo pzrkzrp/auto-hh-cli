@@ -10,6 +10,7 @@
     "start": "node bin/auto-hh search",
     "apply": "node bin/auto-hh apply",
     "login": "node bin/auto-hh apply --login",
+    "schedule": "node bin/auto-hh schedule",
     "build": "tsc",
     "watch": "tsc --watch",
     "migrate:up": "migrate-mongo up",
@@ -24,10 +25,14 @@
     "dotenv": "^16.4.5",
     "migrate-mongo": "^14.0.7",
     "mongodb": "^7.2.0",
+    "node-cron": "^4.2.1",
     "openai": "^6.37.0",
     "playwright": "^1.48.0",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3"
   },
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "@types/node-cron": "^3.0.11"
+  }
 }

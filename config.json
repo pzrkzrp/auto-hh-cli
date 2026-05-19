@@ -3,9 +3,9 @@
     "text": "React OR angular OR node.js OR nest.js",
     "area": [1, 2],
     "only_with_salary": false,
-    "per_page": 50,
+    "per_page": 100,
     "start_page": 0,
-    "max_pages": 40,
+    "max_pages": 10,
     "schedule": null,
     "employment": null
   },
@@ -19,6 +19,10 @@
     "baseUrl": "https://api.deepseek.com",
     "apiKey": ""
   },
+  "schedule": {
+    "cron": "0 12 * * *"
+  },
+  "adaptResume": true,
   "apply": {
     "maxPerRun": 200,
     "dryRun": false,

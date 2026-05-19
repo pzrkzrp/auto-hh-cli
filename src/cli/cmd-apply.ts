@@ -105,6 +105,13 @@ async function applyToVacancy(page, entry) {
     return { ok: true, note: 'already applied' };
   }
 
+  // Новая форма отклика (полностраничная, без попапа): раскрываем поле письма
+  const letterToggle = await page.$('[data-qa="vacancy-response-letter-toggle"]');
+  if (letterToggle) {
+    await letterToggle.click();
+    await sleep(rand(500, 1000));
+  }
+
   // Заполняем сопроводительное.
   const textareaSel = 'textarea[data-qa="vacancy-response-popup-form-letter-input"], textarea[name="text"], textarea[data-qa*="letter"]';
   const textarea = await page.waitForSelector(textareaSel, { timeout: 8000 }).catch(() => null);
@@ -121,9 +128,10 @@ async function applyToVacancy(page, entry) {
     return { ok: false, reason: 'letter textarea not found — refusing to submit without cover letter' };
   }
 
-  // Подтверждение отправки.
+  // Подтверждение отправки — предпочитаем кнопку «без теста».
   const submitSelectors = [
-    'button[data-qa="vacancy-response-popup-submit"]',
+    'button[data-qa="vacancy-response-link-no-questions"]',
+    'button[data-qa="vacancy-response-submit-popup"]',
     'button[data-qa*="submit"]',
     'button[type="submit"]',
   ];
@@ -232,8 +240,9 @@ async function apply(opts: Record<string, any> = {}) {
   let ok = 0, fail = 0;
   for (const entry of entries) {
     const state = await history.load();
-    if (state.applied[entry.id]?.via === 'playwright') {
-      log.info(`Skip ${entry.id}: already applied via playwright`);
+    const rec = state.applied[entry.id];
+    if (rec && !rec.digestOnly) {
+      log.info(`Skip ${entry.id}: already applied`);
       continue;
     }
     try {
