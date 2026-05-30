@@ -22,7 +22,7 @@ npx playwright install chromium
 cp .env.example .env
 ```
 
-Положите рядом с проектом `resume.md` (или `.txt`/`.pdf`) — Claude его кеширует и сравнивает с каждой вакансией.
+Положите резюме в `./resumes/` (директория) или укажите `RESUME_PATH=./resume.md` для одного файла. Claude кеширует резюме и сравнивает с каждой вакансией.
 
 ## Команды
 
@@ -31,11 +31,17 @@ cp .env.example .env
 | `npm run login` | Открывает Chromium, ждёт ручного логина на hh.ru, сохраняет сессию в `data/browser-profile/` |
 | `npm start` | Ищет вакансии, фильтрует, судит Claude'ом, пишет письма, складывает в `data/digest-YYYY-MM-DD.json` |
 | `npm run apply` | Поднимает браузер на сохранённой сессии и откликается на всё из последнего дайджеста |
+| `auto-hh resume list` | Показывает список резюме из `RESUME_DIR` |
+| `auto-hh resume register <name>` | Регистрирует резюме в MongoDB (автоматически при первом `search --resume`) |
 
 ### Флаги CLI
 
 **`npm start` / `node index.js`:**
 - `--reset` (или `--fresh`) — перед запуском удаляет `data/history.json`, все `data/digest-*.json`, `data/rejected-*.json` и `data/collected-*.json`. Полный новый прогон с нуля.
+- `--resume <name>` — выбрать конкретное резюме из `RESUME_DIR` по имени (без расширения)
+- `--no-claude` — без Claude, только локальный фильтр
+- `--dry-run` — без генерации писем
+- `--config <path>` — альтернативный путь к config.json
 
 **`npm run apply` / `node src/apply-playwright.js`:**
 - `--login` — режим логина (то же, что `npm run login`)
@@ -89,9 +95,11 @@ cp .env.example .env
 | --- | --- | --- |
 | `CONFIG_PATH` | `./config.json` | Альтернативный путь к конфигу |
 | `HH_USER_AGENT` | `AutoHH/1.0` | User-Agent для API hh.ru — рекомендуется ставить ваш email |
-| `RESUME_PATH` | — | Путь к резюме (`.txt`, `.md`, `.pdf`); без него Claude-судья выключен |
+| `RESUME_PATH` | — | Путь к одному файлу резюме (`.txt`, `.md`, `.pdf`). Альтернатива `RESUME_DIR` |
+| `RESUME_DIR` | — | Директория с несколькими резюме (`.md`, `.txt`, `.pdf`). Выбор через `--resume <name>` |
 | `APPLICANT_PROFILE` | `опытный разработчик` | Короткое описание-фолбэк, если резюме не задано |
 | `REQUEST_DELAY_MS` | `1500` | Пауза между запросами к hh API |
+| `MONGODB_URI` | `mongodb://localhost:27017/autohh` | URI MongoDB для кэша, истории и дайджестов |
 | `DEBUG` | — | Любое непустое значение включает `log.debug` |
 
 ### Claude
@@ -131,22 +139,44 @@ cp .env.example .env
 
 ```
 .
-├─ index.js                       # сборка дайджеста (поиск + фильтр + Claude)
+├─ bin/                           # CLI entry point
 ├─ config.json
 ├─ .env
-└─ src/
-   ├─ hh-client.js                # браузерный скрейпинг hh.ru (Playwright)
-   ├─ filter.js                   # локальный пре-фильтр
-   ├─ judge.js                    # Claude-судья (одиночный + батч)
-   ├─ cover-letter.js             # генерация писем Claude'ом
-   ├─ claude.js                   # общие утилиты для Claude API
-   ├─ digest.js                   # запись дайджеста и rejected в JSON
-   ├─ resume.js                   # загрузка резюме
-   ├─ cache.js                    # кэш собранных вакансий за дату
-   ├─ history.js
-   ├─ config.js
-   ├─ logger.js
-   └─ retry.js                    # повтор при rate limit / 5xx
+├─ resumes/                       # директория с резюме (если задан RESUME_DIR)
+├─ src/
+│  ├─ cli/
+│  │  ├─ index.ts                 # регистрация команд (Commander)
+│  │  ├─ cmd-search.ts            # поиск, фильтр, judge, письма → дайджест
+│  │  ├─ cmd-apply.ts             # автоотклик через Playwright
+│  │  ├─ cmd-cover.ts             # одно письмо по vacancyId
+│  │  ├─ cmd-grade-resume.ts      # оценка резюме AI
+│  │  ├─ cmd-resume.ts            # управление резюме (list/register)
+│  │  └─ ...
+│  ├─ judge/
+│  │  ├─ judge.ts                 # Claude-судья (одиночный + батч)
+│  │  ├─ system-text.ts           # промпт для оценки
+│  │  └─ index.ts
+│  ├─ cover-letter/
+│  │  ├─ cover-letter.ts          # генерация писем
+│  │  ├─ system-text.ts           # промпт для писем
+│  │  └─ index.ts
+│  ├─ types.ts                    # общие типы (Vacancy, Verdict, Resume, ...)
+│  ├─ ai-client.ts                # единый OpenAI-клиент + buildResumeBlock
+│  ├─ text-utils.ts               # stripHtml, parseJSON
+│  ├─ resume.ts                   # загрузка резюме (файл или директория)
+│  ├─ resume-store.ts             # MongoDB-хранилище (регистрация резюме)
+│  ├─ adapt-resume.ts             # адаптация резюме под вакансию
+│  ├─ grade-resume.ts             # оценка резюме через AI
+│  ├─ cache.ts                    # кэш в MongoDB (страницы, вердикты, письма)
+│  ├─ filter.ts                   # локальный пре-фильтр
+│  ├─ hh-client.ts                # браузерный скрейпинг hh.ru (Playwright)
+│  ├─ digest.ts                   # запись дайджеста в Markdown + MongoDB
+│  ├─ history.ts                  # история просмотров/откликов
+│  ├─ db.ts                       # MongoDB connection manager
+│  ├─ config.ts
+│  ├─ logger.ts
+│  └─ retry.ts                    # повтор при rate limit / 5xx
+└─ migrations/                    # миграции MongoDB (индексы, схемы)
 ```
 
 ## Замечания

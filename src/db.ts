@@ -11,7 +11,6 @@ export async function connect(): Promise<Db> {
   client = new MongoClient(URI);
   await client.connect();
   db = client.db();
-  await db.collection('cache').createIndex({ date: 1 }, { unique: true });
   return db;
 }
 

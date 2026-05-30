@@ -1,5 +1,5 @@
 // Хранилище истории откликов в MongoDB.
-import { connect, dbInstance } from "./db.js";
+import { connect, dbInstance } from "./db";
 import { Collection } from "mongodb";
 
 const COLLECTION = 'history';
@@ -13,9 +13,7 @@ interface HistoryDoc {
 
 async function col(): Promise<Collection<HistoryDoc>> {
   await connect();
-  const c = dbInstance().collection<HistoryDoc>(COLLECTION);
-  await c.createIndex({ vacancyId: 1 }, { unique: true });
-  return c;
+  return dbInstance().collection<HistoryDoc>(COLLECTION);
 }
 
 export async function load(): Promise<{ applied: Record<string, any>; seen: Record<string, string> }> {

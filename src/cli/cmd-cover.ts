@@ -1,12 +1,12 @@
 // Команда cover: сгенерировать сопроводительное для одной вакансии по id.
 import HHClient from "../hh-client.js";
-import { buildCoverLetter } from "../cover-letter.js";
+import { buildCoverLetter } from "../cover-letter/index.js";
 import { loadResume } from "../resume.js";
 import { loadConfig } from "../config.js";
 import { vacancyMatchesFilter } from "../filter.js";
 import log from "../logger.js";
 
-async function cover(vacancyId: string) {
+async function cover(vacancyId: string, opts: Record<string, any> = {}) {
   if (!vacancyId) {
     console.error('Usage: auto-hh cover <vacancy-id>');
     process.exit(1);
@@ -14,7 +14,7 @@ async function cover(vacancyId: string) {
 
   const cfg = loadConfig();
   const client = new HHClient();
-  const resume = loadResume();
+  const resume = loadResume(opts.resume);
 
   try {
     if (!resume) {

@@ -13,16 +13,23 @@ export interface CacheDoc {
   coverLetters: Record<string, string>;
 }
 
-export async function load(date?: Date): Promise<CacheDoc> {
+export async function load(date?: Date, resumeId?: string): Promise<CacheDoc> {
   await connect();
   const db = dbInstance();
   const key = dateKey(date);
 
+  const judgeFilter: any = { date: key };
+  const coverFilter: any = {};
+  if (resumeId) {
+    judgeFilter.resumeId = resumeId;
+    coverFilter.resumeId = resumeId;
+  }
+
   const [pageDocs, fullDocs, judgeDocs, coverDocs] = await Promise.all([
     db.collection('cachePages').find({ date: key }).toArray(),
     db.collection('cacheFull').find({ date: key }).toArray(),
-    db.collection('cacheJudgements').find({ date: key }).toArray(),
-    db.collection('cacheCoverLetters').find({ date: key }).toArray(),
+    db.collection('cacheJudgements').find(judgeFilter).toArray(),
+    db.collection('cacheCoverLetters').find(coverFilter).toArray(),
   ]);
 
   const pages: Record<string, any[]> = {};
@@ -61,24 +68,28 @@ export async function saveFull(state: CacheDoc, vacancyId: string, date?: Date):
   );
 }
 
-export async function saveJudgements(state: CacheDoc, date?: Date): Promise<void> {
+export async function saveJudgements(state: CacheDoc, resumeId?: string, date?: Date): Promise<void> {
   await connect();
   const db = dbInstance();
   const key = dateKey(date);
   const coll = db.collection('cacheJudgements');
-  await coll.deleteMany({ date: key });
+  const filter: any = { date: key };
+  if (resumeId) filter.resumeId = resumeId;
+  await coll.deleteMany(filter);
   const docs = Object.entries(state.judgements || {}).map(([vid, j]) => ({
-    date: key, vacancyId: vid, score: j.score, fit: j.fit,
+    date: key, resumeId: resumeId || null, vacancyId: vid, score: j.score, fit: j.fit,
     reason: j.reason, redFlags: j.redFlags || [],
   }));
   if (docs.length) await coll.insertMany(docs);
 }
 
-export async function saveCoverLetter(state: CacheDoc, vacancyId: string, date?: Date): Promise<void> {
+export async function saveCoverLetter(state: CacheDoc, vacancyId: string, resumeId?: string, date?: Date): Promise<void> {
   await connect();
+  const filter: any = { vacancyId: String(vacancyId) };
+  if (resumeId) filter.resumeId = resumeId;
   await dbInstance().collection('cacheCoverLetters').updateOne(
-    { vacancyId: String(vacancyId) },
-    { $set: { date: dateKey(date), vacancyId: String(vacancyId), letter: state.coverLetters?.[String(vacancyId)] || '' } },
+    filter,
+    { $set: { date: dateKey(date), resumeId: resumeId || null, vacancyId: String(vacancyId), letter: state.coverLetters?.[String(vacancyId)] || '' } },
     { upsert: true },
   );
 }

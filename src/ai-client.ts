@@ -1,12 +1,13 @@
 import OpenAI from "openai";
+import type { Resume } from "./types.js";
 
-let client = null;
-let lastConfig = null;
+let client: OpenAI | null = null;
+let lastConfig: any = null;
 
-function getClient(apiConfig) {
+export function getClient(apiConfig?: any): OpenAI | null {
+  const cfg = apiConfig || {};
   if (client && lastConfig === apiConfig) return client;
 
-  const cfg = apiConfig || {};
   const key = cfg.apiKey || process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY;
   if (!key) return null;
 
@@ -18,19 +19,7 @@ function getClient(apiConfig) {
   return client;
 }
 
-function stripHtml(s) {
-  return (s || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
-function parseJSON(text) {
-  if (!text) return null;
-  let cleaned = text.trim();
-  cleaned = cleaned.replace(/^```json\s*\n?/i, '').replace(/\n?```\s*$/i, '');
-  cleaned = cleaned.replace(/^\*\*+/, '').replace(/\*\*+$/, '');
-  return JSON.parse(cleaned);
-}
-
-function buildResumeBlock(resume, adaptedText = null) {
+export function buildResumeBlock(resume: Resume, adaptedText: string | null = null): { type: string; text: string } | null {
   if (!resume) return null;
   if (adaptedText) {
     return { type: 'text', text: `=== РЕЗЮМЕ СОИСКАТЕЛЯ (адаптированное под вакансию) ===\n${adaptedText}` };
@@ -40,5 +29,3 @@ function buildResumeBlock(resume, adaptedText = null) {
   }
   return { type: 'text', text: `=== РЕЗЮМЕ СОИСКАТЕЛЯ ===\n${resume.text}` };
 }
-
-export { getClient, stripHtml, parseJSON, buildResumeBlock };

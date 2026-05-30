@@ -5,11 +5,12 @@ import {  loadConfig  } from "../config";
 import history from "../history";
 import * as collectCache from "../cache.js";
 import {  vacancyMatchesFilter  } from "../filter.js";
-import {  buildCoverLetter, buildCoverLettersBatch  } from "../cover-letter.js";
+import {  buildCoverLetter, buildCoverLettersBatch  } from "../cover-letter/index.js";
 import {  loadResume  } from "../resume.js";
-import {  judgeVacancy, judgeVacanciesBatch  } from "../judge.js";
+import {  judgeVacancy, judgeVacanciesBatch  } from "../judge/index.js";
 import {  writeDigest, writeRejected  } from "../digest.js";
 import resetData from "../reset.js";
+import { registerResume } from "../resume-store.js";
 import log from "../logger.js";
 
 async function collectVacancies(client, search, cache) {
@@ -80,7 +81,6 @@ async function filterLocally(client, items, cache, cfg) {
 
     const verdict = vacancyMatchesFilter(full, cfg.filter);
     await history.markSeen(item.id);
-
     if (!verdict.ok) {
       log.info(`Skip ${item.id} (${full.name}): ${verdict.reason}`);
       continue;
@@ -90,7 +90,7 @@ async function filterLocally(client, items, cache, cfg) {
   return candidates;
 }
 
-async function judgeWithClaude(resume, candidates, cache, minScore, adaptResume = false) {
+async function judgeWithClaude(resume, candidates, cache, minScore, adaptResume = false, resumeId?: string) {
   const judgements = new Map();
   for (const [id, j] of Object.entries(cache.judgements)) judgements.set(id, j);
   let judgedCount = 0;
@@ -119,7 +119,7 @@ async function judgeWithClaude(resume, candidates, cache, minScore, adaptResume 
         if (j) {
           judgements.set(String(v.id), j);
           cache.judgements[String(v.id)] = j;
-          await collectCache.saveJudgements(cache);
+          await collectCache.saveJudgements(cache, resumeId);
         }
         judgedCount++;
       }
@@ -128,7 +128,7 @@ async function judgeWithClaude(resume, candidates, cache, minScore, adaptResume 
         judgements.set(id, j);
         cache.judgements[id] = j;
       }
-      await collectCache.saveJudgements(cache);
+      await collectCache.saveJudgements(cache, resumeId);
       judgedCount += batch.length;
     }
   }
@@ -186,7 +186,7 @@ function selectAccepted(candidates, judgements, useClaude, maxRun) {
   return { accepted, rejected };
 }
 
-async function generateCoverLetters(resume, accepted, cache, dryRun) {
+async function generateCoverLetters(resume, accepted, cache, dryRun, resumeId?: string) {
   const coverBatchSize = parseInt(process.env.COVER_BATCH_SIZE || '20', 10);
   const coverMap = new Map();
   for (const [id, letter] of Object.entries(cache.coverLetters)) coverMap.set(id, letter);
@@ -206,7 +206,7 @@ async function generateCoverLetters(resume, accepted, cache, dryRun) {
           for (const [id, letter] of partial.entries()) {
             coverMap.set(id, letter);
             cache.coverLetters[id] = letter;
-            await collectCache.saveCoverLetter(cache, id);
+            await collectCache.saveCoverLetter(cache, id, resumeId);
           }
         },
       );
@@ -262,7 +262,8 @@ async function search(opts: Record<string, any> = {}) {
 
   const cfg = loadConfig();
   const client = new HHClient();
-  const resume = loadResume();
+  const resume = loadResume(opts.resume);
+  const resumeId = resume?.id;
   const minScore = cfg.apply.minClaudeScore ?? 7;
   const dryRun = opts.dryRun ?? cfg.apply.dryRun ?? false;
   const hasApiKey = cfg.api?.apiKey || process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY;
@@ -271,13 +272,14 @@ async function search(opts: Record<string, any> = {}) {
 
   try {
     if (resume) {
-      log.info(`Resume loaded: ${resume.filename} (${resume.type})`);
+      log.info(`Resume loaded: ${resumeId} (${resume.filename}, ${resume.type})`);
+      await registerResume(resume).catch(() => {});
     } else {
       log.warn('RESUME_PATH not set — Claude judge disabled, fall back to local filter only');
     }
 
     log.info('Searching vacancies', cfg.search);
-    const cache = await collectCache.load();
+    const cache = await collectCache.load(undefined, resumeId);
     const items = await collectVacancies(client, cfg.search, cache);
 
     const candidates = await filterLocally(client, items, cache, cfg);
@@ -285,12 +287,12 @@ async function search(opts: Record<string, any> = {}) {
 
     const adaptResume = cfg.adaptResume !== false;
     const { judgements, judgedCount } = useClaude
-      ? await judgeWithClaude(resume, candidates, cache, minScore, adaptResume)
+      ? await judgeWithClaude(resume, candidates, cache, minScore, adaptResume, resumeId)
       : { judgements: new Map(), judgedCount: 0 };
 
     const { accepted, rejected } = selectAccepted(candidates, judgements, useClaude, maxRun);
 
-    const coverMap = await generateCoverLetters(resume, accepted, cache, dryRun);
+    const coverMap = await generateCoverLetters(resume, accepted, cache, dryRun, resumeId);
 
     const matched = await buildResults(accepted, coverMap, cache, cfg, resume);
 

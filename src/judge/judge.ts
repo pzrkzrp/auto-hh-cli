@@ -1,13 +1,16 @@
-import log from "./logger.js";
-import {  retryOnTransient  } from "./retry.js";
-import {  loadConfig  } from "./config";
-import {  getClient, stripHtml, parseJSON, buildResumeBlock  } from "./claude.js";
-import {  adaptResumeForVacancy  } from "./adapt-resume.js";
+import log from "../logger.js";
+import { retryOnTransient } from "../retry.js";
+import { loadConfig } from "../config";
+import { getClient, buildResumeBlock } from "../ai-client.js";
+import { stripHtml, parseJSON } from "../text-utils.js";
+import { adaptResumeForVacancy } from "../adapt-resume.js";
+import type { Vacancy, Resume, Verdict, JudgeOpts } from "../types.js";
+import { buildSystemText } from "./system-text.js";
 
 const apiConfig = loadConfig().api || {};
 
-function formatVacancyText(vacancy) {
-  const description = stripHtml(vacancy.description).slice(0, 6000);
+function formatVacancyText(vacancy: Vacancy) {
+  const description = stripHtml(vacancy.description);
   const skills = (vacancy.key_skills || []).map(s => s.name).join(', ');
   const salary = vacancy.salary
     ? `${vacancy.salary.from || '?'}–${vacancy.salary.to || '?'} ${vacancy.salary.currency || ''}`
@@ -26,26 +29,7 @@ function formatVacancyText(vacancy) {
 ${description}`;
 }
 
-function buildSystemText(minScore) {
-  return `Ты карьерный консультант. Сравни резюме соискателя с вакансией и реши, стоит ли откликаться.
-
-Критерии "fit=true":
-- Стек на 60%+ совпадает с требованиями
-- Уровень (junior/middle/senior) подходит
-- Нет блокирующих несоответствий: обязательная локация, технология, которой нет в резюме, и т.п.
-- Зарплатная вилка не ниже ожиданий из резюме (если указано)
-
-score: 1-3 — не подходит, 4-6 — спорно, 7-8 — хороший матч, 9-10 — идеальный.
-Порог отклика: score >= ${minScore}. Если ниже — fit=false.
-Если fit = false, добавь поле reason с причиной отказа.
-Если fit = true, добавь поле comment почему вакансия подходит.
-coverLetter всегда оставляй пустой строкой "" — сопроводительные пишутся отдельным шагом.
-vacancyId скопируй из поля id вакансии (оно первое в данных вакансии).ла
-Отвечай ТОЛЬКО JSON, строго соответствующий этой схеме.
-Никаких пояснений, никакого markdown, только один JSON-объект.`;
-}
-
-async function judgeVacancy(resume, vacancy, opts: Record<string, any> = {}) {
+async function judgeVacancy(resume: Resume, vacancy: Vacancy, opts: JudgeOpts = {}): Promise<Verdict | null> {
   const c = getClient(apiConfig);
   if (!c) return null;
 
@@ -53,17 +37,17 @@ async function judgeVacancy(resume, vacancy, opts: Record<string, any> = {}) {
   const minScore = opts.minScore ?? 7;
 
   const vacancyBlock = {
-    type: 'text',
+    type: 'text' as const,
     text: `=== ВАКАНСИЯ ===\n${formatVacancyText(vacancy)}`,
   };
 
   const adaptedText = opts.adaptResume ? adaptResumeForVacancy(resume, vacancy) : null;
   const resumeBlock = buildResumeBlock(resume, adaptedText);
   const systemText = buildSystemText(minScore);
-  const messages = [
-    { role: 'system', content: systemText },
+  const messages: any = [
+    { role: 'system' as const, content: systemText },
     {
-      role: 'user',
+      role: 'user' as const,
       content: [
         ...(resumeBlock ? [resumeBlock] : []),
         vacancyBlock,
@@ -73,7 +57,6 @@ async function judgeVacancy(resume, vacancy, opts: Record<string, any> = {}) {
   try {
     const resp = await retryOnTransient(() => c.chat.completions.create({
       model,
-      max_tokens: 8000,
       messages,
       response_format: { type: 'json_object' },
     }));
@@ -90,7 +73,7 @@ async function judgeVacancy(resume, vacancy, opts: Record<string, any> = {}) {
 
 // Батчевая версия: судит пачку вакансий за один запрос.
 // Возвращает Map<vacancyId, verdict> (verdict в том же формате, что judgeVacancy).
-async function judgeVacanciesBatch(resume, vacancies, opts: Record<string, any> = {}) {
+async function judgeVacanciesBatch(resume: Resume, vacancies: Vacancy[], opts: JudgeOpts = {}): Promise<Map<string, Verdict> | null> {
   const c = getClient(apiConfig);
   if (!c) return null;
   if (!vacancies.length) return new Map();
@@ -116,13 +99,13 @@ async function judgeVacanciesBatch(resume, vacancies, opts: Record<string, any> 
 
   const resumeBlock = !adapt ? buildResumeBlock(resume) : null;
 
-  const messages = [
-    { role: 'system', content: systemText },
+  const messages: any = [
+    { role: 'system' as const, content: systemText },
     {
-      role: 'user',
+      role: 'user' as const,
       content: [
         ...(resumeBlock ? [resumeBlock] : []),
-        { type: 'text', text: vacanciesText },
+        { type: 'text' as const, text: vacanciesText },
       ],
     },
   ];
@@ -130,7 +113,6 @@ async function judgeVacanciesBatch(resume, vacancies, opts: Record<string, any> 
   try {
     const resp = await retryOnTransient(() => c.chat.completions.create({
       model,
-      max_tokens: 8000,
       messages,
       response_format: { type: 'json_object' },
     }));

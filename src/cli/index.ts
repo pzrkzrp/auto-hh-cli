@@ -1,4 +1,4 @@
-// CLI entry point: регистрирует команды и запускает Commander.
+1// CLI entry point: регистрирует команды и запускает Commander.
 import {  Command  } from "commander";
 import cmdSearch from "./cmd-search.js";
 import cmdApply from "./cmd-apply.js";
@@ -8,6 +8,8 @@ import cmdConfig from "./cmd-config.js";
 import cmdReset from "./cmd-reset.js";
 import cmdCover from "./cmd-cover.js";
 import cmdSchedule from "./cmd-schedule.js";
+import cmdGradeResume from "./cmd-grade-resume.js";
+import cmdResume from "./cmd-resume.js";
 
 const program = new Command();
 
@@ -23,6 +25,7 @@ program
   .option('-d, --dry-run', 'Только поиск, без генерации писем')
   .option('--no-claude', 'Без Claude, только локальный фильтр')
   .option('--reset', 'Сбросить историю и кэш перед запуском')
+  .option('-r, --resume <name>', 'Имя резюме из RESUMES_DIR')
   .action(cmdSearch);
 
 program
@@ -57,11 +60,25 @@ program
 program
   .command('cover <vacancyId>')
   .description('Сгенерировать сопроводительное для вакансии по id')
-  .action(cmdCover);
+  .option('-r, --resume <name>', 'Имя резюме из RESUMES_DIR')
+  .action((vacancyId, opts) => cmdCover(vacancyId, opts));
 
 program
   .command('schedule')
   .description('Запустить планировщик — выполняет search по расписанию из config.json')
   .action(cmdSchedule);
+
+program
+  .command('grade')
+  .description('Оценить резюме через AI')
+  .option('-r, --resume <name>', 'Имя резюме из RESUMES_DIR')
+  .action(cmdGradeResume);
+
+program
+  .command('resume')
+  .description('Управление резюме: list / register <name>')
+  .argument('[subcommand]', 'list или register')
+  .argument('[name]', 'Имя резюме для register')
+  .action((subcommand, name) => cmdResume({ _: [subcommand, name].filter(Boolean) }));
 
 export default program;

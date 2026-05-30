@@ -42,7 +42,7 @@ function loadLatestDigest() {
     }));
   }
 
-  // Парсинг старого формата .md
+  // Парсинг .md формата
   const text = fs.readFileSync(file, 'utf-8');
   const entries = [];
   for (const block of text.split(/\n---\n/)) {
@@ -51,7 +51,15 @@ function loadLatestDigest() {
     if (!url) continue;
     const id = url.match(/vacancy\/(\d+)/)?.[1];
     if (!id) continue;
-    entries.push({ id, url, coverLetter: cover || '' });
+    const titleMatch = block.match(/^\*\*([^*]+)\*\*\s*@/);
+    const employerMatch = block.match(/@\s*(.+)/);
+    entries.push({
+      id,
+      url,
+      coverLetter: cover || '',
+      title: titleMatch?.[1]?.trim(),
+      employer: employerMatch?.[1]?.trim(),
+    });
   }
   return entries;
 }
@@ -62,6 +70,13 @@ async function applyToVacancy(page, entry) {
   const maxDelay = parseInt(process.env.PW_MAX_DELAY_MS || '2000', 10);
   await page.goto(entry.url, { waitUntil: 'domcontentloaded' });
   await sleep(rand(minDelay, maxDelay));
+
+  // Проверяем, не откликались ли уже (по странице, а не по локальной истории).
+  const alreadyResponded = await checkAlreadyResponded(page);
+  if (alreadyResponded) {
+    log.info(`Already applied (detected on page): ${entry.id}`);
+    return { ok: true, note: 'already applied (page)' };
+  }
 
   // Пробуем разные селекторы кнопки отклика.
   const selectors = [
@@ -128,41 +143,61 @@ async function applyToVacancy(page, entry) {
     return { ok: false, reason: 'letter textarea not found — refusing to submit without cover letter' };
   }
 
-  // Подтверждение отправки — предпочитаем кнопку «без теста».
-  const submitSelectors = [
-    'button[data-qa="vacancy-response-link-no-questions"]',
-    'button[data-qa="vacancy-response-submit-popup"]',
-    'button[data-qa*="submit"]',
-    'button[type="submit"]',
-  ];
-  for (const sel of submitSelectors) {
-    const el = await page.$(sel);
-    if (el) { await el.click().catch(() => {}); break; }
+  // Ручное подтверждение: пользователь сам нажимает «Откликнуться» в браузере.
+  log.info(`\n>>> Вакансия "${entry.title || entry.id}" @ ${entry.employer || '?'}`);
+  log.info(`>>> Сопроводительное заполнено. Проверьте и нажмите «Откликнуться» в браузере.`);
+  log.info(`>>> Ожидание...`);
+
+  const manualTimeout = parseInt(process.env.PW_MANUAL_TIMEOUT_MS || '300000', 10);
+  const hadTextarea = !!textarea;
+  let submitted = false;
+
+  try {
+    await page.waitForFunction(
+      (args) => {
+        const url = window.location.href;
+        // Полностраничная форма: редирект на negotiations/test
+        if (url.includes('/applicant/negotiations/') || url.includes('/applicant/vacancy_response/test')) {
+          return true;
+        }
+        // Попап-форма: окно с полем ввода закрылось
+        if (args.hadTextarea && !document.querySelector(args.textareaSel)) {
+          return true;
+        }
+        // Запасной вариант: кнопка отклика исчезла или стала ссылкой на negotiations
+        const btn = document.querySelector('a[data-qa="vacancy-response-link-top"], a[data-qa="vacancy-response-link"]');
+        if (btn && btn.getAttribute('href')?.includes('/applicant/negotiations/')) {
+          return true;
+        }
+        return false;
+      },
+      { textareaSel, hadTextarea },
+      { timeout: manualTimeout, polling: 500 },
+    );
+    submitted = true;
+  } catch (e) {
+    log.warn(`Manual submit wait timeout for ${entry.id}`);
   }
 
-  await sleep(rand(1500, 3000));
+  if (!submitted) {
+    return { ok: false, reason: 'manual submit timeout' };
+  }
 
-  const post = await detectPostState(page);
-  if (post === 'test') {
-    log.warn(`Test required after submit for ${entry.id}`);
+  const afterSubmitState = await detectPostState(page);
+  if (afterSubmitState === 'test') {
+    log.warn(`Test required for ${entry.id}`);
     if (TEST_MODE === 'skip') return { ok: false, reason: 'test required' };
     if (TEST_MODE === 'manual') {
       try {
-        await waitForEnter(`Тест для вакансии "${entry.title}" (${entry.url}). Пройдите тест в браузере.`);
+        await waitForEnter(`Тест для вакансии "${entry.title || entry.id}" (${entry.url}). Пройдите тест в браузере.`);
       } catch (e) {
         log.warn(`Manual test timeout for ${entry.id}: ${e.message}`);
         return { ok: false, reason: e.message };
       }
     }
   }
-  if (post !== 'applied') {
-    const state = await detectPostState(page);
-    if (state === 'unknown') {
-      const postUrl = page.url();
-      log.info(`Submit done, landed on ${postUrl}`);
-    }
-  }
 
+  log.info(`Submitted: ${entry.id} @ ${entry.employer || '?'}`);
   return { ok: true };
 }
 
@@ -171,6 +206,22 @@ async function detectPostState(page) {
   if (/\/applicant\/vacancy_response\/test/.test(url)) return 'test';
   if (/\/applicant\/negotiations/.test(url)) return 'applied';
   return 'unknown';
+}
+
+// Проверяет, не откликались ли уже на эту вакансию, по содержимому страницы.
+async function checkAlreadyResponded(page) {
+  // 1. Кнопка отклика — ссылка на negotiations (уже откликнулись)
+  const respondedLink = await page.$('a[data-qa="vacancy-response-link-top"][href*="negotiation"], a[data-qa="vacancy-response-link"][href*="negotiation"]');
+  if (respondedLink) return true;
+
+  // 2. Текст "Вы откликнулись" на странице
+  const bodyText = await page.evaluate(() => document.body?.innerText?.slice(0, 500) || '');
+  if (/вы\s+откликнулись/i.test(bodyText)) return true;
+
+  // 3. URL уже на negotiations (редирект)
+  if (/\/applicant\/negotiations/.test(page.url())) return true;
+
+  return false;
 }
 
 function waitForEnter(message) {

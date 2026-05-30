@@ -1,9 +1,11 @@
 node_modules/
 .env
 data/
-resume.md
+data/resumes/resume.md
 resume.txt
 resume.pdf
 *.log
 .idea/
 .claude/
+/dist/
+/.playwright-mcp/
