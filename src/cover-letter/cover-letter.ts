@@ -42,7 +42,7 @@ async function buildWithClaude(vacancy, matchedSkills, resume = null, adaptResum
 Описание:
 ${description}
 
-Напиши короткое сопроводительное письмо от моего имени в официально-деловом стиле. 3–5 предложения.
+Напиши короткое сопроводительное письмо от моего имени в официально-деловом стиле. 3–5 предложений.
 
 Образец:
 """
@@ -59,8 +59,9 @@ Telegram: @your_telegram
 - Без markdown, без "С уважением", без имени в подписи.
 - Заверши строкой "Telegram: @your_telegram".
 - Не упоминай зарплату, вилку, ожидания по доходу — ни конкретных цифр, ни общих формулировок ("по рынку", "обсуждаемо" и т.п.).
-- Не пиши Заинтересовала вакансия ${vacancy.employer?.name}, а пиши заинтересовала ваша вакансия или вакансия в вашей компании
-`;
+- Не пиши "Заинтересовала вакансия <название компании>", а пиши "заинтересовала ваша вакансия" или "вакансия в вашей компании".
+- Не используй длинные тире.
+- Начинай основную часть с указания, что стек и задачи полностью подходят под твой профиль (например: "стек и задачи полностью совпадают с моим опытом", "профиль вакансии полностью соответствует моему стеку").`;
 
   try {
     const resp = await retryOnTransient(() => client.chat.completions.create({
@@ -109,7 +110,7 @@ ${description}`;
 // Генерирует сопроводительные пачками по batchSize вакансий за один запрос.
 // items: [{ vacancy, matchedSkills }]. Возвращает Map<vacancyId, text>.
 // onBatch(partialResult) — вызывается после каждой пачки с накопленным результатом.
-async function buildCoverLettersBatch(resume, items, batchSize = 10, onBatch = null) {
+async function buildCoverLettersBatch(resume, items, batchSize = 20, onBatch = null) {
   const client = getClient(apiConfig);
   const result = new Map();
   if (!client || !items.length) return result;

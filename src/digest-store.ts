@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { connect, dbInstance } from "./db";
+import { DigestEntry, DigestDoc } from "./types";
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 
@@ -41,7 +42,17 @@ async function writeToMongo(collection: string, entries: any[]): Promise<void> {
     { upsert: true },
   );
 }
-
+export async function getDigestsByDate(collection: string, date: string): Promise<DigestEntry[]> {
+  await connect();
+  const doc = await dbInstance().collection<DigestDoc>(collection).findOne({ date }, { projection: { entries: 1 } });
+  return doc?.entries || [];
+}
+// выводит все дайджесты без отклика
+export async function getAllDigests(collection: string): Promise<DigestEntry[]> {
+  await connect();
+  const docs = await dbInstance().collection<DigestDoc>(collection).find({}, { projection: { entries: 1 }, sort: { date: -1 } }).toArray();
+  return docs.flatMap(d => d.entries || []);
+}
 export async function writeDigest(entries: any[]): Promise<string | null> {
   if (!entries.length) return null;
   ensureDir();

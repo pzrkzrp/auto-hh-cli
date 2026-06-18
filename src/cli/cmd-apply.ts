@@ -2,8 +2,9 @@
 import fs from "fs";
 import path from "path";
 import {  chromium  } from "playwright";
-import log from "../logger.js";
-import history from "../history.js";
+import log from "../logger";
+import history from "../history-store";
+import  {getDigestsByDate, getAllDigests} from "../digest-store";
 
 const PROFILE = path.resolve(process.env.PW_USER_DATA_DIR || './data/browser-profile');
 const HEADLESS = String(process.env.PW_HEADLESS || 'false') === 'true';
@@ -19,49 +20,13 @@ function ensureProfile() {
   if (!fs.existsSync(PROFILE)) fs.mkdirSync(PROFILE, { recursive: true });
 }
 
-function loadLatestDigest() {
-  const dir = path.join(__dirname, '..', '..', 'data');
-  if (!fs.existsSync(dir)) throw new Error('No data dir, run `auto-hh search` first');
-  const files = fs.readdirSync(dir)
-    .filter(f => /^digest-.*\.(json|md)$/.test(f))
-    .sort()
-    .reverse();
-  if (!files.length) throw new Error('No digest files. Run `auto-hh search` first');
-  const file = path.join(dir, files[0]);
-  log.info(`Using digest: ${file}`);
-
-  if (file.endsWith('.json')) {
-    const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
-    const entries = Array.isArray(data) ? data : (data.matched || []);
-    return entries.map(e => ({
-      id: String(e.id),
-      url: e.url,
-      coverLetter: e.coverLetter || '',
-      title: e.title,
-      employer: e.employer,
-    }));
+async function loadDigest(type: string) {
+  if (type === 'all') {
+    log.info('Loading all digests');
+    return getAllDigests('digest');
   }
-
-  // Парсинг .md формата
-  const text = fs.readFileSync(file, 'utf-8');
-  const entries = [];
-  for (const block of text.split(/\n---\n/)) {
-    const url = block.match(/Ссылка:\s*(\S+)/)?.[1];
-    const cover = block.match(/\*\*Сопроводительное:\*\*\n\n([\s\S]*?)$/m)?.[1]?.trim();
-    if (!url) continue;
-    const id = url.match(/vacancy\/(\d+)/)?.[1];
-    if (!id) continue;
-    const titleMatch = block.match(/^\*\*([^*]+)\*\*\s*@/);
-    const employerMatch = block.match(/@\s*(.+)/);
-    entries.push({
-      id,
-      url,
-      coverLetter: cover || '',
-      title: titleMatch?.[1]?.trim(),
-      employer: employerMatch?.[1]?.trim(),
-    });
-  }
-  return entries;
+  const date = new Date().toISOString().slice(0, 10);
+  return getDigestsByDate('digest', date);
 }
 
 async function applyToVacancy(page, entry) {
@@ -266,7 +231,8 @@ async function apply(opts: Record<string, any> = {}) {
   }
 
   ensureProfile();
-  const entries = loadLatestDigest();
+  const type = opts.type || 'latest';
+  const entries = await loadDigest(type);
 
   if (opts.limit && Number.isFinite(opts.limit) && opts.limit > 0) {
     entries.splice(opts.limit);

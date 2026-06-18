@@ -2,13 +2,13 @@
 import path from "path";
 import HHClient from "../hh-client";
 import {  loadConfig  } from "../config";
-import history from "../history";
+import history from "../history-store";
 import * as collectCache from "../cache.js";
 import {  vacancyMatchesFilter  } from "../filter.js";
 import {  buildCoverLetter, buildCoverLettersBatch  } from "../cover-letter/index.js";
 import {  loadResume  } from "../resume.js";
 import {  judgeVacancy, judgeVacanciesBatch  } from "../judge/index.js";
-import {  writeDigest, writeRejected  } from "../digest.js";
+import {  writeDigest, writeRejected  } from "../digest-store.js";
 import resetData from "../reset.js";
 import { registerResume } from "../resume-store.js";
 import log from "../logger.js";

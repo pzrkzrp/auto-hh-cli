@@ -32,6 +32,7 @@ program
   .command('apply')
   .description('Откликнуться через Playwright на вакансии из дайджеста')
   .option('-l, --limit <n>', 'Сколько вакансий обработать', parseInt)
+  .option('-t, --type <type>', 'latest (сегодня) или all (все дни)', 'latest')
   .option('--login', 'Режим логина (открыть браузер для входа на hh.ru)')
   .action(cmdApply);
 

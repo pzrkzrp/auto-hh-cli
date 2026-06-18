@@ -170,8 +170,8 @@ cp .env.example .env
 │  ├─ cache.ts                    # кэш в MongoDB (страницы, вердикты, письма)
 │  ├─ filter.ts                   # локальный пре-фильтр
 │  ├─ hh-client.ts                # браузерный скрейпинг hh.ru (Playwright)
-│  ├─ digest.ts                   # запись дайджеста в Markdown + MongoDB
-│  ├─ history.ts                  # история просмотров/откликов
+│  ├─ digest-store.ts                   # запись дайджеста в Markdown + MongoDB
+│  ├─ history-store.ts                  # история просмотров/откликов
 │  ├─ db.ts                       # MongoDB connection manager
 │  ├─ config.ts
 │  ├─ logger.ts

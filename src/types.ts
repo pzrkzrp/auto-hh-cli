@@ -35,3 +35,21 @@ export interface Resume {
   data?: string;
   filename: string;
 }
+
+export interface DigestDoc {
+  date: string;
+  entries: DigestEntry[];
+}
+
+export interface DigestEntry {
+  id: string;
+  title: string;
+  employer: string;
+  area: string;
+  salary: string;
+  url: string;
+  matchedSkills: string[];
+  score: number;
+  reason: string | null;
+  coverLetter: string;
+}
