@@ -77,9 +77,9 @@ program
 
 program
   .command('resume')
-  .description('Управление резюме: list / register <name>')
-  .argument('[subcommand]', 'list или register')
-  .argument('[name]', 'Имя резюме для register')
+  .description('Управление резюме: list / register <name> / show [name]')
+  .argument('[subcommand]', 'list, register или show')
+  .argument('[name]', 'Имя резюме (для register/show)')
   .action((subcommand, name) => cmdResume({ _: [subcommand, name].filter(Boolean) }));
 
 export default program;

@@ -9,3 +9,4 @@ resume.pdf
 .claude/
 /dist/
 /.playwright-mcp/
+packages/

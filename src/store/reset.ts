@@ -1,9 +1,9 @@
 // Сброс истории, кэша и дайджестов (файлы + MongoDB).
 import fs from "fs";
 import path from "path";
-import { connect, dbInstance } from "./db.js";
-import * as collectCache from "./cache.js";
-import log from "./logger.js";
+import { connect, dbInstance } from "../clients/db";
+import * as collectCache from "./cache-store.js";
+import log from "../logger.js";
 
 async function clearMongoCollection(name: string) {
   try {
@@ -15,7 +15,7 @@ async function clearMongoCollection(name: string) {
 
 export default async function resetData() {
   // Файлы data/
-  const dir = path.join(__dirname, '..', 'data');
+  const dir = path.join(__dirname, '..', '..', 'data');
   if (fs.existsSync(dir)) {
     for (const name of fs.readdirSync(dir)) {
       if (/^(history|digest|rejected)\./.test(name)) {

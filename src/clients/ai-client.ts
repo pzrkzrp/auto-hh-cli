@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import type { Resume } from "./types.js";
+import type { Resume } from "../types";
 
 let client: OpenAI | null = null;
 let lastConfig: any = null;

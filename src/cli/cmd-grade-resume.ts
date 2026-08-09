@@ -1,7 +1,7 @@
 import { writeFileSync } from "fs";
 import { join } from "path";
 import log from "../logger.js";
-import { gradeResume } from "../grade-resume.js";
+import { gradeResume } from "../domain/grade-resume.js";
 
 function bar(score: number, max: number): string {
   const pct = Math.round((score / max) * 100);

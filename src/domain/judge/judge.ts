@@ -1,13 +1,39 @@
-import log from "../logger.js";
-import { retryOnTransient } from "../retry.js";
-import { loadConfig } from "../config";
-import { getClient, buildResumeBlock } from "../ai-client.js";
-import { stripHtml, parseJSON } from "../text-utils.js";
+import log from "../../logger.js";
+import { retryOnTransient } from "../../retry.js";
+import { loadConfig } from "../../config";
+import { getClient, buildResumeBlock } from "../../clients/ai-client";
+import { stripHtml, parseJSON } from "../../text-utils.js";
 import { adaptResumeForVacancy } from "../adapt-resume.js";
-import type { Vacancy, Resume, Verdict, JudgeOpts } from "../types.js";
+import type { Vacancy, Resume, Verdict, JudgeOpts } from "../../types.js";
 import { buildSystemText } from "./system-text.js";
 
 const apiConfig = loadConfig().api || {};
+
+// Гарантирует инвариант вердикта: fit=true ⇒ comment непустой, reason=null;
+// fit=false ⇒ reason непустой, comment=null.
+function normalizeVerdict(v: any): Verdict {
+  const score = Math.max(1, Math.min(10, Number(v.score) || 1));
+  const fit = v.fit === true;
+  const reasonRaw = typeof v.reason === 'string' ? v.reason.trim() : '';
+  const commentRaw = typeof v.comment === 'string' ? v.comment.trim() : '';
+
+  let reason: string | null = null;
+  let comment: string | null = null;
+  if (fit) {
+    comment = commentRaw || reasonRaw || `Соответствие профилю (score ${score}/10)`;
+  } else {
+    reason = reasonRaw || commentRaw || `Совпадение слабое (score ${score}/10)`;
+  }
+
+  return {
+    vacancyId: String(v.vacancyId ?? ''),
+    fit,
+    score,
+    reason,
+    comment,
+    coverLetter: typeof v.coverLetter === 'string' ? v.coverLetter : '',
+  };
+}
 
 function formatVacancyText(vacancy: Vacancy) {
   const description = stripHtml(vacancy.description);
@@ -63,8 +89,9 @@ async function judgeVacancy(resume: Resume, vacancy: Vacancy, opts: JudgeOpts = 
     const text = (resp as any).choices?.[0]?.message?.content;
     if (!text) return null;
     const parsed = parseJSON(text);
-    log.debug(`judge ${vacancy.id}: score=${parsed.score} fit=${parsed.fit} in=${(resp as any).usage?.prompt_tokens} out=${(resp as any).usage?.completion_tokens}`);
-    return parsed;
+    const verdict = normalizeVerdict(parsed);
+    log.debug(`judge ${vacancy.id}: score=${verdict.score} fit=${verdict.fit} in=${(resp as any).usage?.prompt_tokens} out=${(resp as any).usage?.completion_tokens}`);
+    return verdict;
   } catch (err) {
     log.warn(`judge failed for ${vacancy.id}: ${err.message}`);
     return null;
@@ -123,8 +150,9 @@ async function judgeVacanciesBatch(resume: Resume, vacancies: Vacancy[], opts: J
     log.debug(`judge batch ${vacancies.length}: in=${(resp as any).usage?.prompt_tokens || 0} out=${(resp as any).usage?.completion_tokens || 0}`);
 
     const map = new Map();
-    for (const verdict of parsed.verdicts || []) {
-      map.set(String(verdict.vacancyId), verdict);
+    for (const v of parsed.verdicts || []) {
+      const verdict = normalizeVerdict(v);
+      map.set(verdict.vacancyId, verdict);
     }
     return map;
   } catch (err) {

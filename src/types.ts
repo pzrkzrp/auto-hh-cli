@@ -5,7 +5,7 @@ export interface Vacancy {
   key_skills?: { name: string }[];
   salary?: { from?: number; to?: number; currency?: string };
   employer?: { name?: string };
-  area?: { name?: string };
+  area?: { name: string, id: number };
   experience?: { name?: string };
   schedule?: { name?: string };
   employment?: { name?: string };
@@ -48,8 +48,8 @@ export interface DigestEntry {
   area: string;
   salary: string;
   url: string;
-  matchedSkills: string[];
   score: number;
   reason: string | null;
+  comment: string | null;
   coverLetter: string;
 }

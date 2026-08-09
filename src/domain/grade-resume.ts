@@ -1,8 +1,8 @@
-import { loadConfig } from "./config.js";
-import { getClient } from "./ai-client.js";
-import { loadResume } from "./resume.js";
-import { retryOnTransient } from "./retry.js";
-import log from "./logger.js";
+import { loadConfig } from "../config.js";
+import { getClient } from "../clients/ai-client";
+import { loadResume } from "../resume.js";
+import { retryOnTransient } from "../retry.js";
+import log from "../logger.js";
 
 const apiConfig = loadConfig().api || {};
 

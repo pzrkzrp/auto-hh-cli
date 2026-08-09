@@ -1,5 +1,5 @@
 // Команда reset: сбросить историю, кэш и дайджесты.
-import resetData from "../reset.js";
+import resetData from "../store/reset.js";
 
 async function reset() {
   await resetData();

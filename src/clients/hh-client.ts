@@ -7,8 +7,8 @@
 import path from "path";
 import fs from "fs";
 import {  chromium  } from "playwright";
-import {  env  } from "./config.js";
-import log from "./logger.js";
+import {  env  } from "../config";
+import log from "../logger";
 
 const PROFILE = path.resolve(process.env.PW_USER_DATA_DIR || './data/browser-profile');
 

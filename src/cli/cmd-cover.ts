@@ -1,9 +1,8 @@
 // Команда cover: сгенерировать сопроводительное для одной вакансии по id.
-import HHClient from "../hh-client.js";
-import { buildCoverLetter } from "../cover-letter/index.js";
+import HHClient from "../clients/hh-client";
+import { buildCoverLetter } from "../domain/cover-letter/index.js";
 import { loadResume } from "../resume.js";
 import { loadConfig } from "../config.js";
-import { vacancyMatchesFilter } from "../filter.js";
 import log from "../logger.js";
 
 async function cover(vacancyId: string, opts: Record<string, any> = {}) {
@@ -40,11 +39,8 @@ async function cover(vacancyId: string, opts: Record<string, any> = {}) {
     }
     console.log();
 
-    const verdict = vacancyMatchesFilter(full, cfg.filter);
-    const matchedSkills = verdict.matchedSkills || [];
-
     log.info(`Generating cover letter...`);
-    const letter = await buildCoverLetter(cfg.apply.coverLetterTemplate, full, matchedSkills);
+    const letter = await buildCoverLetter(cfg.apply.coverLetterTemplate, full);
 
     if (letter) {
       console.log('--- COVER LETTER ---');

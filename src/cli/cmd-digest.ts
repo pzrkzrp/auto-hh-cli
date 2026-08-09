@@ -1,7 +1,7 @@
 // Команда digest: показать последний дайджест.
 import fs from "fs";
 import path from "path";
-import { connect, dbInstance } from "../db.js";
+import { connect, dbInstance } from "../clients/db";
 import log from "../logger.js";
 
 async function digest(opts: Record<string, any> = {}) {

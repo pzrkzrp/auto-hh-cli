@@ -1,16 +1,16 @@
 // Команда search: поиск, фильтр, Claude → дайджест.
 import path from "path";
-import HHClient from "../hh-client";
+import HHClient from "../clients/hh-client";
 import {  loadConfig  } from "../config";
-import history from "../history-store";
-import * as collectCache from "../cache.js";
-import {  vacancyMatchesFilter  } from "../filter.js";
-import {  buildCoverLetter, buildCoverLettersBatch  } from "../cover-letter";
+import history from "../store/history-store";
+import * as collectCache from "../store/cache-store.js";
+import {  vacancyMatchesFilter  } from "../domain/filter.js";
+import {  buildCoverLetter, buildCoverLettersBatch  } from "../domain/cover-letter";
 import {  loadResume  } from "../resume.js";
-import {  judgeVacancy, judgeVacanciesBatch  } from "../judge";
-import {  writeDigest, writeRejected  } from "../digest-store";
-import resetData from "../reset.js";
-import { registerResume } from "../resume-store.js";
+import {  judgeVacancy, judgeVacanciesBatch  } from "../domain/judge";
+import {  writeDigest, writeRejected  } from "../store/digest-store";
+import resetData from "../store/reset.js";
+import { registerResume } from "../store/resume-store.js";
 import log from "../logger.js";
 
 async function collectVacancies(client, search, cache) {
@@ -152,7 +152,7 @@ function selectAccepted(candidates, judgements, useClaude, maxRun) {
   for (const { full, verdict } of candidates) {
     if (accepted.length >= maxRun) break;
 
-    let score = null, reason = '';
+    let score = null, reason = '', comment = null;
 
     if (useClaude) {
       const judgement = judgements.get(String(full.id));
@@ -161,9 +161,9 @@ function selectAccepted(candidates, judgements, useClaude, maxRun) {
       } else {
         score = judgement.score;
         reason = judgement.reason;
+        comment = judgement.comment;
         if (!judgement.fit) {
-          log.info(`Claude rejected ${full.id} (score=${score}): ${reason}` +
-            (judgement.redFlags?.length ? ` flags=${judgement.redFlags.join('; ')}` : ''));
+          log.info(`Claude rejected ${full.id} (score=${score}): ${reason}`);
           rejected.push({
             id: full.id,
             title: full.name,
@@ -173,15 +173,14 @@ function selectAccepted(candidates, judgements, useClaude, maxRun) {
             url: full.alternate_url,
             score,
             reason,
-            redFlags: judgement.redFlags || [],
           });
           continue;
         }
-        log.info(`Claude approved ${full.id} (score=${score}): ${reason}`);
+        log.info(`Claude approved ${full.id} (score=${score}): ${comment || reason}`);
       }
     }
 
-    accepted.push({ full, verdict, score, reason });
+    accepted.push({ full, verdict, score, reason, comment });
   }
   return { accepted, rejected };
 }
@@ -200,7 +199,7 @@ async function generateCoverLetters(resume, accepted, cache, dryRun, resumeId?: 
       log.info(`Generating cover letters in batches of ${coverBatchSize} for ${pending.length} vacancies`);
       const generated = await buildCoverLettersBatch(
         resume,
-        pending.map(a => ({ vacancy: a.full, matchedSkills: a.verdict.matchedSkills })),
+        pending.map(a => ({ vacancy: a.full })),
         coverBatchSize,
         async (partial) => {
           for (const [id, letter] of partial.entries()) {
@@ -220,10 +219,10 @@ async function generateCoverLetters(resume, accepted, cache, dryRun, resumeId?: 
 async function buildResults(accepted, coverMap, cache, cfg, resume = null) {
   const matched = [];
   for (const a of accepted) {
-    const { full, verdict, score, reason } = a;
+    const { full, verdict, score, reason, comment } = a;
     let coverLetter = coverMap.get(String(full.id));
     if (!coverLetter) {
-      coverLetter = await buildCoverLetter(cfg.apply.coverLetterTemplate, full, verdict.matchedSkills, resume);
+      coverLetter = await buildCoverLetter(cfg.apply.coverLetterTemplate, full, resume);
       if (coverLetter) {
         cache.coverLetters[String(full.id)] = coverLetter;
         await collectCache.saveCoverLetter(cache, full.id);
@@ -237,9 +236,9 @@ async function buildResults(accepted, coverMap, cache, cfg, resume = null) {
       area: full.area?.name || '—',
       salary: fmtSalary(full.salary),
       url: full.alternate_url,
-      matchedSkills: verdict.matchedSkills,
       score,
       reason,
+      comment,
       coverLetter,
     });
     await history.markApplied(full.id, {

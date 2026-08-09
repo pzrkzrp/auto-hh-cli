@@ -1,9 +1,9 @@
 import fs from "fs";
 import path from "path";
-import { connect, dbInstance } from "./db";
-import { DigestEntry, DigestDoc } from "./types";
+import { connect, dbInstance } from "../clients/db";
+import { DigestEntry, DigestDoc } from "../types";
 
-const DATA_DIR = path.join(__dirname, '..', 'data');
+const DATA_DIR = path.join(__dirname, '..', '..', 'data');
 
 function dateKey(): string {
   return new Date().toISOString().slice(0, 10);
@@ -22,7 +22,7 @@ function toMarkdown(entries: any[], title: string): string {
     lines.push(`- Зарплата: ${e.salary || '—'}`);
     if (e.score != null) lines.push(`- Оценка: ${e.score}/10`);
     if (e.reason) lines.push(`- Причина: ${e.reason}`);
-    if (e.redFlags?.length) lines.push(`- Флаги: ${e.redFlags.join(', ')}`);
+    if (e.comment) lines.push(`- Совпадение: ${e.comment}`);
     if (e.url) lines.push(`- Ссылка: ${e.url}`);
     if (e.coverLetter) {
       lines.push(`\n**Сопроводительное:**\n\n${e.coverLetter}`);

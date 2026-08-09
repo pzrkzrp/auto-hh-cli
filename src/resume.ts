@@ -37,17 +37,23 @@ export function listResumes(): { name: string; filename: string }[] {
 }
 
 /** Загружает резюме по имени (без расширения) или по RESUME_PATH/RESUMES_DIR. */
+// Отрезает расширение, если пользователь передал его в имени (`ivan.md` → `ivan`).
+function stripExt(name: string): string {
+  return name.replace(/\.(md|txt|pdf)$/i, '');
+}
+
 export function loadResume(name?: string): Resume | null {
   if (name) {
+    const baseName = stripExt(name);
     if (DIR) {
       for (const ext of ['.md', '.txt', '.pdf']) {
-        const abs = path.join(DIR, `${name}${ext}`);
-        if (fs.existsSync(abs)) return parseFile(abs, name);
+        const abs = path.join(DIR, `${baseName}${ext}`);
+        if (fs.existsSync(abs)) return parseFile(abs, baseName);
       }
       throw new Error(`Resume "${name}" not found in ${DIR}`);
     }
-    if (FILE && path.basename(FILE, path.extname(FILE)) === name) {
-      return parseFile(FILE, name);
+    if (FILE && path.basename(FILE, path.extname(FILE)) === baseName) {
+      return parseFile(FILE, baseName);
     }
     throw new Error(`RESUMES_DIR not set — cannot load resume by name. Set RESUMES_DIR or use RESUME_PATH.`);
   }

@@ -1,5 +1,5 @@
 // Хранилище истории откликов в MongoDB.
-import { connect, dbInstance } from "./db";
+import { connect, dbInstance } from "../clients/db";
 import { Collection } from "mongodb";
 
 const COLLECTION = 'history';
@@ -8,7 +8,6 @@ interface HistoryDoc {
   vacancyId: string;
   status: 'seen' | 'applied';
   at: Date;
-  meta?: Record<string, any>;
 }
 
 async function col(): Promise<Collection<HistoryDoc>> {
@@ -22,7 +21,7 @@ export async function load(): Promise<{ applied: Record<string, any>; seen: Reco
   const applied: Record<string, any> = {};
   const seen: Record<string, string> = {};
   for (const d of docs) {
-    if (d.status === 'applied') applied[d.vacancyId] = { at: d.at.toISOString(), ...d.meta };
+    if (d.status === 'applied') applied[d.vacancyId] = { at: d.at.toISOString() };
     seen[d.vacancyId] = d.at.toISOString();
   }
   return { applied, seen };

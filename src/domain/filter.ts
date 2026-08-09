@@ -1,4 +1,6 @@
 // Логика отбора вакансий по критериям из config.filter.
+import {Vacancy} from "../types";
+
 function lower(s) { return (s || '').toString().toLowerCase(); }
 
 const CAPITALS = new Set(['1', '2']); // hh: 1 = Москва, 2 = Санкт-Петербург
@@ -22,7 +24,7 @@ function detectWorkFormat(vacancy) {
   };
 }
 
-function vacancyMatchesFilter(vacancy, filter) {
+function vacancyMatchesFilter(vacancy: Vacancy, filter) : {ok: boolean, reason?: string} {
   if (!vacancy) return { ok: false, reason: 'no vacancy' };
 
   if (filter.excludeArchived && vacancy.archived) {
@@ -37,8 +39,6 @@ function vacancyMatchesFilter(vacancy, filter) {
   const haystack = [
     vacancy.name,
     vacancy.description,
-    vacancy.snippet?.requirement,
-    vacancy.snippet?.responsibility,
     ...(vacancy.key_skills || []).map(s => s.name),
   ].map(lower).join(' ');
 
@@ -68,16 +68,7 @@ function vacancyMatchesFilter(vacancy, filter) {
     }
   }
 
-  // Соответствие требуемым навыкам — хотя бы один из списка.
-  let matchedSkills = [];
-  if (filter.requiredSkills?.length) {
-    matchedSkills = filter.requiredSkills.filter(s => haystack.includes(lower(s)));
-    if (matchedSkills.length === 0) {
-      return { ok: false, reason: 'no required skills matched' };
-    }
-  }
-
-  return { ok: true, matchedSkills };
+  return { ok: true };
 }
 
 export { vacancyMatchesFilter };

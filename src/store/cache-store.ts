@@ -1,5 +1,5 @@
 // Кэш в отдельных MongoDB коллекциях: cachePages, cacheFull, cacheJudgements, cacheCoverLetters.
-import { connect, dbInstance } from "./db.js";
+import { connect, dbInstance } from "../clients/db";
 
 function dateKey(d?: Date): string {
   return (d || new Date()).toISOString().slice(0, 10);
@@ -78,7 +78,7 @@ export async function saveJudgements(state: CacheDoc, resumeId?: string, date?: 
   await coll.deleteMany(filter);
   const docs = Object.entries(state.judgements || {}).map(([vid, j]) => ({
     date: key, resumeId: resumeId || null, vacancyId: vid, score: j.score, fit: j.fit,
-    reason: j.reason, redFlags: j.redFlags || [],
+    reason: j.reason, comment: j.comment,
   }));
   if (docs.length) await coll.insertMany(docs);
 }

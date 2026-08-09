@@ -1,27 +1,23 @@
-import OpenAI from "openai";
-import log from "../logger.js";
-import { retryOnTransient } from "../retry.js";
-import { loadConfig } from "../config.js";
-import { getClient, buildResumeBlock } from "../ai-client.js";
-import { stripHtml, parseJSON } from "../text-utils.js";
+import log from "../../logger.js";
+import { retryOnTransient } from "../../retry.js";
+import { loadConfig } from "../../config.js";
+import { getClient, buildResumeBlock } from "../../clients/ai-client";
+import { stripHtml, parseJSON } from "../../text-utils.js";
 import { adaptResumeForVacancy } from "../adapt-resume.js";
 import { buildBatchSystemText } from "./system-text.js";
 
 const apiConfig = loadConfig().api || {};
 
-function buildFromTemplate(template, vacancy, matchedSkills) {
+function buildFromTemplate(template, vacancy) {
   const ctx = {
     title: vacancy.name || '',
     employer: vacancy.employer?.name || '',
     area: vacancy.area?.name || '',
-    matchedSkills: (matchedSkills && matchedSkills.length)
-      ? matchedSkills.join(', ')
-      : 'требуемыми технологиями',
   };
   return template.replace(/\{(\w+)\}/g, (_, k) => ctx[k] ?? '');
 }
 
-async function buildWithClaude(vacancy, matchedSkills, resume = null, adaptResume = false) {
+async function buildWithClaude(vacancy, resume = null, adaptResume = false) {
   const client = getClient(apiConfig);
   if (!client) return null;
 
@@ -37,7 +33,6 @@ async function buildWithClaude(vacancy, matchedSkills, resume = null, adaptResum
 Компания: ${vacancy.employer?.name || '—'}
 Регион: ${vacancy.area?.name || '—'}
 Ключевые навыки: ${skills || '—'}
-Совпавшие с моими: ${matchedSkills?.join(', ') || '—'}
 
 Описание:
 ${description}
@@ -47,7 +42,7 @@ ${description}
 Образец:
 """
 Здравствуйте! Заинтересовала вакансия в вашей компании — профиль полностью совпадает с моим опытом. Последние несколько лет работаю с React и NestJS, уверенно владею SQL/ORM, есть опыт с Next.js и SSR. Буду рад обсудить детали на созвоне.
-Telegram: @your_telegram
+Telegram: @your_telegram, e-mail: ivanov@example.com
 """
 
 Правила:
@@ -57,7 +52,7 @@ Telegram: @your_telegram
 - Начни с "Здравствуйте!".
 - 1–2 конкретных совпадения из описания вакансии.
 - Без markdown, без "С уважением", без имени в подписи.
-- Заверши строкой "Telegram: @your_telegram".
+- Заверши строкой "Telegram: @your_telegram, e-mail: ivanov@example.com".
 - Не упоминай зарплату, вилку, ожидания по доходу — ни конкретных цифр, ни общих формулировок ("по рынку", "обсуждаемо" и т.п.).
 - Не пиши "Заинтересовала вакансия <название компании>", а пиши "заинтересовала ваша вакансия" или "вакансия в вашей компании".
 - Не используй длинные тире.
@@ -85,15 +80,15 @@ Telegram: @your_telegram
   }
 }
 
-async function buildCoverLetter(template, vacancy, matchedSkills, resume = null) {
+async function buildCoverLetter(template, vacancy, resume = null) {
   const cfg = loadConfig();
   const adaptResume = cfg.adaptResume !== false;
-  const claudeText = await buildWithClaude(vacancy, matchedSkills, resume, adaptResume);
+  const claudeText = await buildWithClaude(vacancy, resume, adaptResume);
   if (claudeText) return claudeText;
-  return buildFromTemplate(template, vacancy, matchedSkills);
+  return buildFromTemplate(template, vacancy);
 }
 
-function formatVacancyShort(vacancy, matchedSkills) {
+function formatVacancyShort(vacancy) {
   const description = stripHtml(vacancy.description).slice(0, 1000);
   const skills = (vacancy.key_skills || []).map(s => s.name).join(', ');
   return `vacancyId: ${vacancy.id}
@@ -101,14 +96,12 @@ function formatVacancyShort(vacancy, matchedSkills) {
 Компания: ${vacancy.employer?.name || '—'}
 Регион: ${vacancy.area?.name || '—'}
 Ключевые навыки: ${skills || '—'}
-Совпавшие с резюме: ${matchedSkills?.join(', ') || '—'}
-
 Описание:
 ${description}`;
 }
 
 // Генерирует сопроводительные пачками по batchSize вакансий за один запрос.
-// items: [{ vacancy, matchedSkills }]. Возвращает Map<vacancyId, text>.
+// items: [{ vacancy }]. Возвращает Map<vacancyId, text>.
 // onBatch(partialResult) — вызывается после каждой пачки с накопленным результатом.
 async function buildCoverLettersBatch(resume, items, batchSize = 20, onBatch = null) {
   const client = getClient(apiConfig);
@@ -138,7 +131,7 @@ async function buildCoverLettersBatch(resume, items, batchSize = 20, onBatch = n
             block += `=== РЕЗЮМЕ (релевантное для вакансии #${idx + 1}) ===\n${adapted}\n\n`;
           }
         }
-        block += `=== ВАКАНСИЯ #${idx + 1} ===\n${formatVacancyShort(it.vacancy, it.matchedSkills)}`;
+        block += `=== ВАКАНСИЯ #${idx + 1} ===\n${formatVacancyShort(it.vacancy)}`;
         return block;
       }).join('\n\n'),
     });
