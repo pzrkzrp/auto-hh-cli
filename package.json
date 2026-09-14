@@ -1,5 +1,5 @@
 {
-  "name": "auto-hh",
+  "name": "auto-hh-cli",
   "version": "1.0.0",
   "description": "Search & filter vacancies on hh.ru, apply via Playwright",
   "main": "app.js",
