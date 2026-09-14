@@ -238,7 +238,7 @@ npm run apply
 | `maxPerRun` | Максимум вакансий в один дайджест |
 | `dryRun` | Если `true` — письма не генерируются (эквивалент флага `--dry-run`) |
 | `minClaudeScore` | Нижний порог score ИИ-судьи, всё ниже отбрасывается |
-| `coverLetterTemplate` | Фолбэк-шаблон письма, если ИИ недоступен. Плейсхолдеры: `{title}`, `{employer}`, `{area}` |
+| `coverLetterTemplate` | Фолбэк-шаблон письма, если ИИ недоступен. Плейсхолдеры: `{title}`, `{employer}`, `{area}`, `{signature}` (подпись из `COVER_SIGNATURE`) |
 
 ### `api` — ИИ-провайдер
 
@@ -287,6 +287,7 @@ npm run apply
 | `CLAUDE_MODEL` | `gpt-4o` | Модель для судьи и писем. **Должна** соответствовать `api.baseUrl` (для DeepSeek — например `deepseek-chat`) |
 | `JUDGE_BATCH_SIZE` | `10` | Сколько вакансий в одной пачке на судейство |
 | `COVER_BATCH_SIZE` | `20` | Сколько писем генерировать за один запрос |
+| `COVER_SIGNATURE` | `Telegram: <your-telegram>, e-mail: <your-email>` | Подпись сопроводительного письма — идёт в системный промпт ИИ и в плейсхолдер `{signature}` шаблона из `config.json` |
 
 ### Playwright (`apply` / `login`)
 

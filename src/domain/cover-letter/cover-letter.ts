@@ -4,7 +4,7 @@ import { loadConfig } from "../../config.js";
 import { getClient, buildResumeBlock } from "../../clients/ai-client";
 import { stripHtml, parseJSON } from "../../text-utils.js";
 import { adaptResumeForVacancy } from "../adapt-resume.js";
-import { buildBatchSystemText } from "./system-text.js";
+import { buildBatchSystemText, coverSignature } from "./system-text.js";
 
 const apiConfig = loadConfig().api || {};
 
@@ -13,6 +13,7 @@ function buildFromTemplate(template, vacancy) {
     title: vacancy.name || '',
     employer: vacancy.employer?.name || '',
     area: vacancy.area?.name || '',
+    signature: coverSignature(),
   };
   return template.replace(/\{(\w+)\}/g, (_, k) => ctx[k] ?? '');
 }
@@ -42,7 +43,7 @@ ${description}
 Образец:
 """
 Здравствуйте! Заинтересовала вакансия в вашей компании — профиль полностью совпадает с моим опытом. Последние несколько лет работаю с React и NestJS, уверенно владею SQL/ORM, есть опыт с Next.js и SSR. Буду рад обсудить детали на созвоне.
-Telegram: @your_telegram, e-mail: ivanov@example.com
+${coverSignature()}
 """
 
 Правила:
@@ -52,7 +53,7 @@ Telegram: @your_telegram, e-mail: ivanov@example.com
 - Начни с "Здравствуйте!".
 - 1–2 конкретных совпадения из описания вакансии.
 - Без markdown, без "С уважением", без имени в подписи.
-- Заверши строкой "Telegram: @your_telegram, e-mail: ivanov@example.com".
+- Заверши строкой "${coverSignature()}".
 - Не упоминай зарплату, вилку, ожидания по доходу — ни конкретных цифр, ни общих формулировок ("по рынку", "обсуждаемо" и т.п.).
 - Не пиши "Заинтересовала вакансия <название компании>", а пиши "заинтересовала ваша вакансия" или "вакансия в вашей компании".
 - Не используй длинные тире.
