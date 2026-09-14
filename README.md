@@ -137,6 +137,37 @@ npm run apply
 
 ---
 
+## Интерактивное меню
+
+Если не хочется помнить флаги — запустите меню:
+
+```bash
+npm run ui          # или: npx auto-hh ui (алиасы: menu, interactive)
+```
+
+Меню — тонкая обёртка над теми же командами: своих правил, настроек и кэша у него нет, все ответы превращаются в те же флаги CLI.
+
+| Пункт меню | Что запускает |
+| --- | --- |
+| Поиск вакансий | `search` — спрашивает резюме, ИИ-судью, `--dry-run`, `--reset` |
+| Отклики из дайджеста | `apply` — спрашивает тип (`latest`/`all`) и лимит |
+| Войти на hh.ru | `apply --login` |
+| Последний дайджест | `digest` — с опцией JSON |
+| История откликов | `history` — с опцией JSON |
+| Резюме | `resume list` / `show` / `register` — выбор резюме списком из `RESUMES_DIR` |
+| Оценить резюме ИИ | `grade` |
+| Сопроводительное по id | `cover <vacancyId>` — ввод id и выбор резюме |
+| Планировщик | `schedule` — блокирующий, выход по Ctrl+C |
+| Конфигурация | `config` (только просмотр) |
+| Сброс данных | `reset` — с подтверждением |
+
+- **Ctrl+C** внутри промпта (и `Esc`) — выход из меню; Ctrl+C во время самой команды (`search`, `apply`, `schedule`) прерывает её как обычно.
+- Меню требует **TTY**: при запуске из пайпа или в CI (`process.stdout.isTTY === false`) оно печатает подсказку и завершается с кодом 0 — используйте обычные команды.
+- Ручной ENTER в браузерных флоу (`PW_TEST_MODE=manual`, капча) работает так же, как при обычном запуске: меню закрывает свои промпты до старта команды и не держит stdin.
+- Промпты — на [`@inquirer/prompts`](https://www.npmjs.com/package/@inquirer/prompts) версии 7 (есть CJS-сборка, Node 18+).
+
+---
+
 ## Команды
 
 ### npm-скрипты
@@ -150,6 +181,7 @@ npm run apply
 | `npm run resume:list` | `auto-hh resume list` | Показать список резюме |
 | `npm run resume:show` | `auto-hh resume show [name]` | Показать резюме: `npm run resume:show -- <имя>` |
 | `npm run resume:register` | `auto-hh resume register <name>` | Зарегистрировать резюме: `npm run resume:register -- <имя>` |
+| `npm run ui` | `auto-hh ui` | Интерактивное меню поверх всех команд (TTY) |
 | `npm run build` | — | Компиляция TS в JS (не обязательна) |
 | `npm run migrate:up` | — | Применить миграции MongoDB |
 | `npm run migrate:down` | — | Откатить последнюю миграцию |
@@ -172,6 +204,7 @@ npm run apply
 | `auto-hh resume list` | Показать список резюме из `RESUMES_DIR` |
 | `auto-hh resume show [name]` | Показать метаданные и содержимое резюме (без имени — дефолтное) |
 | `auto-hh resume register <name>` | Зарегистрировать резюме в MongoDB (авто при первом `search`) |
+| `auto-hh ui` | Интерактивное меню (алиасы: `menu`, `interactive`) — см. раздел выше |
 
 ### Флаги `search`
 
@@ -341,7 +374,8 @@ npm run apply
 │  │  ├─ cmd-cover.ts          # одно письмо по vacancyId
 │  │  ├─ cmd-schedule.ts       # планировщик (node-cron)
 │  │  ├─ cmd-grade-resume.ts   # оценка резюме
-│  │  └─ cmd-resume.ts         # управление резюме (list/register)
+│  │  ├─ cmd-resume.ts         # управление резюме (list/register)
+│  │  └─ cmd-ui.ts             # интерактивное меню
 │  ├─ clients/                 # внешние API-клиенты
 │  │  ├─ ai-client.ts          # единый OpenAI-совместимый клиент
 │  │  ├─ hh-client.ts          # поиск и карточки через API hh.ru

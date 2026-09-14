@@ -10,6 +10,7 @@ import cmdCover from "./cmd-cover.js";
 import cmdSchedule from "./cmd-schedule.js";
 import cmdGradeResume from "./cmd-grade-resume.js";
 import cmdResume from "./cmd-resume.js";
+import cmdUi from "./cmd-ui.js";
 
 const program = new Command();
 
@@ -81,5 +82,11 @@ program
   .argument('[subcommand]', 'list, register или show')
   .argument('[name]', 'Имя резюме (для register/show)')
   .action((subcommand, name) => cmdResume({ _: [subcommand, name].filter(Boolean) }));
+
+program
+  .command('ui')
+  .aliases(['menu', 'interactive'])
+  .description('Интерактивное меню для работы со всеми командами')
+  .action(cmdUi);
 
 export default program;
