@@ -11,6 +11,7 @@
     "apply": "node bin/auto-hh apply",
     "login": "node bin/auto-hh apply --login",
     "schedule": "node bin/auto-hh schedule",
+    "ui": "node bin/auto-hh ui",
     "resume:list": "node bin/auto-hh resume list",
     "resume:show": "node bin/auto-hh resume show",
     "resume:register": "node bin/auto-hh resume register",
@@ -22,6 +23,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
+    "@inquirer/prompts": "^7.10.1",
     "@types/node": "^25.7.0",
     "axios": "^1.7.7",
     "commander": "^14.0.3",
